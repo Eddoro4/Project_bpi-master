@@ -1,0 +1,265 @@
+﻿<UserControl x:Class="Project_bpi.ArchivePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:Project_bpi"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800"
+             Background="White">
+
+    <UserControl.Resources>
+        <!-- Стиль для кнопки Скачать -->
+        <Style x:Key="DownloadButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#FF225CAB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="{TemplateBinding Background}" 
+                                CornerRadius="10"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#FF7A9BC8"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#FF5A7BA8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Стиль для кнопки Удалить -->
+        <Style x:Key="DeleteButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#FF8F1306"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="{TemplateBinding Background}" 
+                                CornerRadius="10"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#FFC56359"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#FFC56359"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Стиль для кнопок фильтра -->
+        <Style x:Key="FilterButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#FF225CAB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <!-- Стиль для RadioButton -->
+        <Style x:Key="FilterRadioButtonStyle" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#FF004AA1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,15,0"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Фоновые элементы -->
+        <Border Background="#FFBAD2DF" CornerRadius="25" Margin="30" Grid.ColumnSpan="3"/>
+
+        <!-- Popup для фильтра -->
+        <Popup x:Name="FilterPopup" 
+               Placement="Bottom" 
+               PlacementTarget="{Binding ElementName=FilterButton}"
+               Width="280"
+               AllowsTransparency="True"
+               PopupAnimation="Slide">
+
+            <Border Background="#FFB2B0B0" 
+                    CornerRadius="30" 
+                    BorderBrush="#E0E0E0" 
+                    BorderThickness="1">
+
+                <StackPanel Margin="20" Background="#FFB2B0B0">
+                    <!-- Заголовок -->
+                    <TextBlock Text="Фильтровать по условию" 
+                               FontSize="14" 
+                               FontWeight="Bold" 
+                               Foreground="#FF004AA1"
+                               Margin="0,0,0,20"/>
+
+                    <!-- Тип отчета -->
+                    <TextBlock Text="Тип отчета" 
+                               FontSize="12" 
+                               FontWeight="SemiBold"
+                               Foreground="#333333"
+                               Margin="0,0,0,10"/>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                        <RadioButton x:Name="RadioResearch" 
+                                   Content="Отчет по НИР" 
+                                   GroupName="ReportType"
+                                   Style="{StaticResource FilterRadioButtonStyle}"
+                                   IsChecked="True"/>
+                        <RadioButton x:Name="RadioEducational" 
+                                   Content="Учебный отчет" 
+                                   GroupName="ReportType"
+                                   Style="{StaticResource FilterRadioButtonStyle}"/>
+                    </StackPanel>
+
+                    <!-- Фильтровать по сведению -->
+                
+                    <TextBlock Text="Фильтровать по сведению" 
+                               FontSize="12" 
+                               FontWeight="SemiBold"
+                               Foreground="#333333"
+                               Margin="0,0,0,10"/>
+
+                    <TextBox x:Name="FilterTextBox" 
+                             Text=""
+                             Margin="0,0,0,25"
+                             Padding="10,8"
+                             BorderBrush="#CCCCCC"
+                             BorderThickness="1"
+                           
+                             FontSize="12"
+                             VerticalContentAlignment="Center">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox">
+                                <Style.Triggers>
+                                    <Trigger Property="Text" Value="">
+                                        <Setter Property="Foreground" Value="#888888"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
+
+                    <!-- Кнопки -->
+                    <StackPanel Orientation="Horizontal" 
+                                HorizontalAlignment="Right"
+                                Margin="0,10,0,0">
+                        <Button Content="Отмена" 
+                                Click="CancelFilter_Click"
+                                Background="Transparent"
+                                Foreground="#666666"
+                                Padding="20,10"
+                                Margin="0,0,10,0"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                FontSize="12"
+                                FontWeight="SemiBold"/>
+                        <Button Content="Применить" 
+                                Click="ApplyFilter_Click"
+                                Style="{StaticResource FilterButtonStyle}"
+                                Padding="20,10"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <!-- Основной контент -->
+        <ScrollViewer Margin="30,30,30,30" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition/>
+                        <ColumnDefinition Width="50"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Кнопка фильтра -->
+                    <Button x:Name="FilterButton"
+                            Grid.Column="1" 
+                            HorizontalAlignment="Left" 
+                            Background="{x:Null}" 
+                            BorderBrush="{x:Null}" 
+                            Margin="0,20,20,0" 
+                            Width="25" 
+                            Height="25" 
+                            Click="Filter_Click">
+                        <Image Source="/Снимок экрана 2025-11-17 121115.png" Stretch="Fill"/>
+                    </Button>
+                </Grid>
+
+                <!-- Отчет по НИР 2024 -->
+                <Border Background="White" CornerRadius="10" Margin="20,20,20,10" Padding="5,0,5,0">
+                    <Grid Margin="10,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition Width="133"/>
+                            <ColumnDefinition Width="133"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="Отчет по НИР 2024" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" Foreground="#FF004AA1"/>
+
+                        <Button Content="Скачать" Grid.Column="1" 
+                                Style="{StaticResource DownloadButtonStyle}"
+                                Margin="10,0,10,0"/>
+                        <Button Content="Удалить" Grid.Column="2" 
+                                Style="{StaticResource DeleteButtonStyle}" Margin="10,0,10,0" Background="#FF8F1306"/>
+                    </Grid>
+                </Border>
+
+                <!-- Учебный отчет 2023-2024 -->
+                <Border Background="White" CornerRadius="10" Margin="20,0,20,10" Padding="5,0,5,0">
+                    <Grid Margin="10,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition Width="133"/>
+                            <ColumnDefinition Width="133"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="Учебный отчет 2023-2024" VerticalAlignment="Center" FontSize="14" Foreground="#FF004AA1" FontWeight="Bold"/>
+
+                        <Button Content="Скачать" Grid.Column="1" 
+                                Style="{StaticResource DownloadButtonStyle}"
+                                Margin="10,0"/>
+                        <Button Content="Удалить" Grid.Column="2" 
+                                Style="{StaticResource DeleteButtonStyle}" Margin="10,0,10,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Отчет по НИР 2023 -->
+                <Border Background="White" CornerRadius="10" Margin="20,0,20,10" Padding="5,0,5,0">
+                    <Grid Margin="10,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition Width="133"/>
+                            <ColumnDefinition Width="133" Cursor=""/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="Отчет по НИР 2023" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" Foreground="#FF004AA1"/>
+
+                        <Button Content="Скачать" Grid.Column="1" 
+                                Style="{StaticResource DownloadButtonStyle}"
+                                Margin="10,0"/>
+                        <Button Content="Удалить" Grid.Column="2" 
+                                Style="{StaticResource DeleteButtonStyle}" Margin="10,0,10,0"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

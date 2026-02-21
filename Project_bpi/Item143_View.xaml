@@ -1,0 +1,683 @@
+﻿<UserControl x:Class="Project_bpi.Item143_View"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800">
+
+    <UserControl.Resources>
+        <!-- Стиль для ScrollBar -->
+        <Style x:Key="CustomScrollBar" TargetType="{x:Type ScrollBar}">
+            <Setter Property="Stylus.IsFlicksEnabled" Value="False"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="MinWidth" Value="8"/>
+            <Setter Property="Opacity" Value="0.3"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ScrollBar}">
+                        <Grid x:Name="Bg" Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
+                            <Track x:Name="PART_Track" IsDirectionReversed="true" IsEnabled="{TemplateBinding IsMouseOver}">
+                                <Track.Thumb>
+                                    <Thumb Style="{DynamicResource ScrollBarThumbVertical}"/>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="1"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Стиль для Thumb (бегунка) -->
+        <Style x:Key="ScrollBarThumbVertical" TargetType="{x:Type Thumb}">
+            <Setter Property="OverridesDefaultStyle" Value="true"/>
+            <Setter Property="IsTabStop" Value="false"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Border x:Name="rectangle"
+                            Width="8"
+                            Background="#A0A0A0"
+                            CornerRadius="4"
+                            SnapsToDevicePixels="True"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="rectangle" Property="Background" Value="#707070"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="rectangle" Property="Background" Value="#505050"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Стиль для ScrollViewer с красивым скроллом -->
+        <Style x:Key="BeautifulScrollViewer" TargetType="{x:Type ScrollViewer}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ScrollViewer}">
+                        <Grid x:Name="Grid" Background="{TemplateBinding Background}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <Rectangle x:Name="Corner" Grid.Row="1" Grid.Column="1" Fill="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+
+                            <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"
+                                                Grid.Row="0"
+                                                Grid.Column="0"
+                                                Margin="{TemplateBinding Padding}"
+                                                CanContentScroll="{TemplateBinding CanContentScroll}"
+                                                CanHorizontallyScroll="False"
+                                                CanVerticallyScroll="False"
+                                                Content="{TemplateBinding Content}"
+                                                ContentTemplate="{TemplateBinding ContentTemplate}"/>
+
+                            <ScrollBar x:Name="PART_VerticalScrollBar"
+                                   Grid.Row="0"
+                                   Grid.Column="1"
+                                   AutomationProperties.AutomationId="VerticalScrollBar"
+                                   Cursor="Arrow"
+                                   Maximum="{TemplateBinding ScrollableHeight}"
+                                   Minimum="0"
+                                   Style="{StaticResource CustomScrollBar}"
+                                   ViewportSize="{TemplateBinding ViewportHeight}"
+                                   Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"
+                                   Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}"/>
+
+                            <ScrollBar x:Name="PART_HorizontalScrollBar"
+                                   Grid.Row="1"
+                                   Grid.Column="0"
+                                   AutomationProperties.AutomationId="HorizontalScrollBar"
+                                   Cursor="Arrow"
+                                   Maximum="{TemplateBinding ScrollableWidth}"
+                                   Minimum="0"
+                                   Orientation="Horizontal"
+                                   ViewportSize="{TemplateBinding ViewportWidth}"
+                                   Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"
+                                   Value="{Binding HorizontalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Стили остаются без изменений -->
+        <Style x:Key="TableHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#0167a4"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="15"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#015a8f"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#014d78"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SaveButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#00bf63"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="15"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#00a854"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#009147"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SortButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="20"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="3"
+                        Width="{TemplateBinding Width}"
+                        Height="{TemplateBinding Height}">
+                            <Image Source="/Снимок экрана 2025-11-17 121115.png" 
+                           Stretch="Uniform"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#20000000"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#40000000"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SortActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#558bb1"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="Width" Value="206"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="5"
+                                Padding="10,0">
+                            <StackPanel Orientation="Horizontal" 
+                                        HorizontalAlignment="Center" 
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="{TemplateBinding Content}" 
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,5,0"/>
+                                <ContentPresenter Content="{TemplateBinding Tag}" 
+                                                  HorizontalAlignment="Center" 
+                                                  VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#4a7da1"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#3f6f90"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CancelButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#8a8a8a"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="Width" Value="87"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="5">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#7a7a7a"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#6a6a6a"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="OkButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#005e9d"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="Width" Value="50"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="5">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#005285"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#004670"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FilterComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Width" Value="206"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="10,0"/>
+        </Style>
+
+        <Style x:Key="SearchTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="BorderBrush" Value="#005e9d"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Width" Value="206"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border CornerRadius="15"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                  VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SearchResultsStyle" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#005e9d"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Width" Value="206"/>
+            <Setter Property="Height" Value="100"/>
+            <Setter Property="Margin" Value="0,5,0,10"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="53*"/>
+            <RowDefinition Height="70"/>
+        </Grid.RowDefinitions>
+        <!-- Окно фильтрации и сортировки -->
+        <Border x:Name="FilterSortPanel"
+                Background="#b8b8b8"
+                CornerRadius="25"
+                Width="246"
+                Height="348"
+                Visibility="Collapsed"
+                Panel.ZIndex="1000"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="50,50,0,0">
+            <StackPanel Margin="20,15">
+                <Button x:Name="SortAscButton"
+                        Content="Сортировать по"
+                        Style="{StaticResource SortActionButtonStyle}"
+                        Margin="0,0,0,10">
+                    <Button.Tag>
+                        <TextBlock Text="↑" FontWeight="Bold"/>
+                    </Button.Tag>
+                </Button>
+
+                <Button x:Name="SortDescButton"
+                        Content="Сортировать по"
+                        Style="{StaticResource SortActionButtonStyle}"
+                        Margin="0,0,0,10">
+                    <Button.Tag>
+                        <TextBlock Text="↓" FontWeight="Bold"/>
+                    </Button.Tag>
+                </Button>
+
+                <ComboBox x:Name="FilterTypeComboBox"
+                          Style="{StaticResource FilterComboBoxStyle}"
+                          Margin="0,0,0,10">
+                    <ComboBoxItem Content="Фильтровать по значению"/>
+                    <ComboBoxItem Content="Фильтровать по алфавиту"/>
+                </ComboBox>
+
+                <TextBox x:Name="SearchTextBox"
+                         Style="{StaticResource SearchTextBoxStyle}"
+                         Text="Поиск..."
+                         Margin="0,0,0,5"/>
+
+                <Border Style="{StaticResource SearchResultsStyle}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="SearchResultsPanel"/>
+                    </ScrollViewer>
+                </Border>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="CancelButton"
+                            Grid.Column="1"
+                            Content="Отмена"
+                            Style="{StaticResource CancelButtonStyle}"
+                            Margin="0,0,10,0"
+                            Click="OnCancelButtonClick"/>
+
+                    <Button x:Name="OkButton"
+                            Grid.Column="2"
+                            Content="ОК"
+                            Style="{StaticResource OkButtonStyle}"
+                            Click="OnOkButtonClick"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Style="{StaticResource BeautifulScrollViewer}" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="20">
+                <Border CornerRadius="35" 
+                        Margin="10" 
+                        Padding="15">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#5394ba" Offset="0"/>
+                            <GradientStop Color="#0167a4" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="14 Научно-исследовательская деятельность" 
+                                   FontSize="14" 
+                                   FontWeight="Bold" 
+                                   Foreground="White"
+                                   TextAlignment="Center"
+                                   Margin="0,0,0,10"/>
+
+                        <TextBlock Text="14.3  Проведения конференций, семинаров, совещаний (факт)" 
+                                   FontSize="12" 
+                                   FontWeight="Bold" 
+                                   Foreground="White"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,5"/>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
+                    <Button Content="Загрузка таблицы" Style="{StaticResource ActionButtonStyle}"/>
+                </StackPanel>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Основная таблица -->
+                    <Border Grid.Column="0" BorderBrush="Black" BorderThickness="1" Background="White">
+                        <Grid>
+                            <!-- Четыре строки: шапка, номера столбцов, данные -->
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Шапка таблицы -->
+                            <Border Grid.Row="0" BorderBrush="Black" BorderThickness="0,0,0,1" Background="White">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="50"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Grid.Column="0" BorderBrush="Black" BorderThickness="0,0,1,0">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="№" Style="{StaticResource TableHeaderStyle}" 
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <Button x:Name="SortCol0" Style="{StaticResource SortButtonStyle}" 
+                                                    Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                    Visibility="Collapsed" Margin="0,0,4,2"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Column="1" BorderBrush="Black" BorderThickness="0,0,1,0">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Название мероприятия" 
+                                                       Style="{StaticResource TableHeaderStyle}" TextWrapping="Wrap"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <Button x:Name="SortCol1" Style="{StaticResource SortButtonStyle}" 
+                                                    Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                    Visibility="Collapsed" Margin="0,0,4,2"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Column="2" BorderBrush="Black" BorderThickness="0,0,1,0">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Уровень конференции" Style="{StaticResource TableHeaderStyle}" 
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <Button x:Name="SortCol2" Style="{StaticResource SortButtonStyle}" 
+                                                    Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                    Visibility="Collapsed" Margin="0,0,4,2"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Column="3" BorderBrush="Black" BorderThickness="0,0,1,0">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Дата и место проведения" Style="{StaticResource TableHeaderStyle}" 
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <Button x:Name="SortCol3" Style="{StaticResource SortButtonStyle}" 
+                                                    Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                    Visibility="Collapsed" Margin="0,0,4,2"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Column="4" BorderBrush="Black" BorderThickness="0,0,1,0">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Ответственный" 
+                                                       Style="{StaticResource TableHeaderStyle}" 
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <Button x:Name="SortCol4" Style="{StaticResource SortButtonStyle}" 
+                                                    Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                    Visibility="Collapsed" Margin="0,0,4,2"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Column="5">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Примечание" 
+                                                       Style="{StaticResource TableHeaderStyle}" TextWrapping="Wrap"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <Button x:Name="SortCol6" Style="{StaticResource SortButtonStyle}" 
+                                                    Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                    Visibility="Collapsed" Margin="0,0,4,2"/>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <!-- === НОВАЯ СТРОКА: Порядковые номера столбцов с границами === -->
+                            <Border Grid.Row="1" BorderBrush="Black" BorderThickness="0,0,0,1" Background="White">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="50"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Grid.Column="0" BorderBrush="Black" BorderThickness="0,0,1,0">
+                                        <TextBlock Text="1" Style="{StaticResource TableHeaderStyle}"/>
+                                    </Border>
+                                    <Border Grid.Column="1" BorderBrush="Black" BorderThickness="0,0,1,0">
+                                        <TextBlock Text="2" Style="{StaticResource TableHeaderStyle}"/>
+                                    </Border>
+                                    <Border Grid.Column="2" BorderBrush="Black" BorderThickness="0,0,1,0">
+                                        <TextBlock Text="3" Style="{StaticResource TableHeaderStyle}"/>
+                                    </Border>
+                                    <Border Grid.Column="3" BorderBrush="Black" BorderThickness="0,0,1,0">
+                                        <TextBlock Text="4" Style="{StaticResource TableHeaderStyle}"/>
+                                    </Border>
+                                    <Border Grid.Column="4" BorderBrush="Black" BorderThickness="0,0,1,0">
+                                        <TextBlock Text="5" Style="{StaticResource TableHeaderStyle}"/>
+                                    </Border>
+                                    <Border Grid.Column="5" BorderBrush="Black" BorderThickness="0,0,0,0">
+                                        <TextBlock Text="6" Style="{StaticResource TableHeaderStyle}"/>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <!-- Тело таблицы — DataGrid -->
+                            <DataGrid x:Name="ContractsDataGrid"
+                                      Grid.Row="2"
+                                      AutoGenerateColumns="False"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      SelectionMode="Extended"
+                                      HeadersVisibility="None"
+                                      RowHeaderWidth="0"
+                                      Background="White"
+                                      BorderThickness="0"
+                                      IsReadOnly="True"
+                                      Margin="0">
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+
+                    <Button x:Name="FilterButton"
+                            Grid.Column="1" 
+                            HorizontalAlignment="Left" 
+                            VerticalAlignment="Top"
+                            Background="{x:Null}" 
+                            BorderBrush="{x:Null}" 
+                            Margin="10,0,0,0" 
+                            Width="25" 
+                            Height="25">
+                        <Image Source="/Снимок экрана 2025-11-17 121115.png" Stretch="Fill"/>
+                    </Button>
+                </Grid>
+
+                <!-- Кнопки управления -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+                    <Button Content="Создать" x:Name="CreateButton" Style="{StaticResource ActionButtonStyle}"/>
+                    <Button Content="Редактировать" x:Name="EditButton" Style="{StaticResource ActionButtonStyle}"/>
+                    <Button Content="Удалить" x:Name="DeleteButton" Style="{StaticResource ActionButtonStyle}"/>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Кнопка Сохранить -->
+        <Button Content="Сохранить" 
+        x:Name="SaveButton"
+        Style="{StaticResource SaveButtonStyle}"
+        HorizontalAlignment="Right"
+        VerticalAlignment="Center"
+        Margin="0,0,20,10" Grid.Row="1" Height="36" Width="102"/>
+    </Grid>
+</UserControl>
