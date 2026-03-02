@@ -27,7 +27,6 @@ namespace Project_bpi
         public MainWindow()
         {
             DB.InitializeDatabase();
-            DB.DeleteFilePattern(1);
             InitializeComponent();
             InitializeDateRange();
             InitializeMenuHierarchy();
