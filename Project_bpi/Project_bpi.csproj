@@ -181,6 +181,9 @@
     <Compile Include="Spravka_View.xaml.cs">
       <DependentUpon>Spravka_View.xaml</DependentUpon>
     </Compile>
+    <Compile Include="TemplateNameDialog.xaml.cs">
+      <DependentUpon>TemplateNameDialog.xaml</DependentUpon>
+    </Compile>
     <Compile Include="TemplatesPage.xaml.cs">
       <DependentUpon>TemplatesPage.xaml</DependentUpon>
     </Compile>
@@ -326,6 +329,10 @@
       <SubType>Code</SubType>
     </Compile>
     <Page Include="Spravka_View.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="TemplateNameDialog.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

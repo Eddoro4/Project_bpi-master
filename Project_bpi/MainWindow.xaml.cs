@@ -6,13 +6,13 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Globalization;
+using Project_bpi.Models;
 using Project_bpi.Services;
 
 namespace Project_bpi
@@ -20,9 +20,21 @@ namespace Project_bpi
     public partial class MainWindow : Window
     {
         public DataBase DB = new DataBase();
+        private readonly DataBase TemplateDb = new DataBase("test.db");
 
-        private Dictionary<Border, Border> parents = new Dictionary<Border, Border>();
+        private readonly Dictionary<Border, Border> parents = new Dictionary<Border, Border>();
+        private readonly Dictionary<Border, DynamicTemplateEntry> dynamicTemplates = new Dictionary<Border, DynamicTemplateEntry>();
+        private readonly Dictionary<Border, Section> dynamicSections = new Dictionary<Border, Section>();
+        private readonly Dictionary<Border, SubSection> dynamicSubSections = new Dictionary<Border, SubSection>();
+        private readonly Dictionary<Border, StackPanel> dynamicMenus = new Dictionary<Border, StackPanel>();
+        private readonly Dictionary<Border, TextBlock> dynamicIndicators = new Dictionary<Border, TextBlock>();
         private DateTime _currentCalendarDate = DateTime.Today;
+
+        private sealed class DynamicTemplateEntry
+        {
+            public string DisplayTitle { get; set; }
+            public Report Report { get; set; }
+        }
 
         public MainWindow()
         {
@@ -92,6 +104,413 @@ namespace Project_bpi
             parents[Item_141] = Section14_Header;
             parents[Item_142] = Section14_Header;
             parents[Item_143] = Section14_Header;
+        }
+
+        private async void AddTemplateButton_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new TemplateNameDialog
+            {
+                Owner = this,
+                TemplateName = $"Шаблон {DynamicTemplatesPanel.Children.Count + 1}"
+            };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            string templateTitle = dialog.TemplateName.Trim();
+            if (dynamicTemplates.Values.Any(t =>
+                string.Equals(t.DisplayTitle, templateTitle, StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show("Шаблон с таким названием уже добавлен в меню.", "Шаблоны",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                TemplateDb.InitializeDatabase();
+
+                var reports = await TemplateDb.GetAllReports();
+                if (reports.Count == 0)
+                {
+                    MessageBox.Show("В test.db не найдено ни одного отчета для построения шаблона.", "Шаблоны",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                Report report = await TemplateDb.GetFullReport(reports[0].Id);
+                if (report == null)
+                {
+                    MessageBox.Show("Не удалось прочитать структуру шаблона из test.db.", "Шаблоны",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                AddTemplateToMenu(templateTitle, report);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Не удалось добавить шаблон из test.db:{Environment.NewLine}{ex.Message}",
+                    "Шаблоны", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void AddTemplateToMenu(string templateTitle, Report report)
+        {
+            var templateContainer = new StackPanel();
+            var templateMenu = new StackPanel { Visibility = Visibility.Collapsed };
+            var templateHeader = CreateDynamicMenuBorder(templateTitle, "main", "MenuHeaderStyle", true, out var templateIndicator);
+
+            dynamicTemplates[templateHeader] = new DynamicTemplateEntry
+            {
+                DisplayTitle = templateTitle,
+                Report = report
+            };
+            dynamicMenus[templateHeader] = templateMenu;
+            dynamicIndicators[templateHeader] = templateIndicator;
+            parents[templateHeader] = null;
+
+            templateHeader.MouseLeftButtonDown += DynamicTemplateHeader_Click;
+
+            templateContainer.Children.Add(templateHeader);
+            templateContainer.Children.Add(templateMenu);
+
+            foreach (var section in report.Sections.OrderBy(s => s.Number))
+            {
+                section.Report = report;
+
+                var sectionContainer = new StackPanel();
+                bool hasChildren = section.SubSections != null && section.SubSections.Any();
+                var sectionHeader = CreateDynamicMenuBorder(BuildSectionTitle(section), "sub", "SubMenuStyle", hasChildren, out var sectionIndicator);
+
+                dynamicSections[sectionHeader] = section;
+                parents[sectionHeader] = templateHeader;
+                sectionHeader.MouseLeftButtonDown += DynamicSectionHeader_Click;
+
+                sectionContainer.Children.Add(sectionHeader);
+
+                if (hasChildren)
+                {
+                    var sectionMenu = new StackPanel { Visibility = Visibility.Collapsed };
+                    dynamicMenus[sectionHeader] = sectionMenu;
+                    dynamicIndicators[sectionHeader] = sectionIndicator;
+
+                    foreach (var subsection in section.SubSections.OrderBy(s => s.Number))
+                    {
+                        subsection.Section = section;
+
+                        var subsectionHeader = CreateDynamicMenuBorder(
+                            BuildSubSectionTitle(section, subsection),
+                            "sub2",
+                            "SubMenuStyle1",
+                            false,
+                            out _);
+
+                        dynamicSubSections[subsectionHeader] = subsection;
+                        parents[subsectionHeader] = sectionHeader;
+                        subsectionHeader.MouseLeftButtonDown += DynamicLeaf_Click;
+
+                        sectionMenu.Children.Add(subsectionHeader);
+                    }
+
+                    sectionContainer.Children.Add(sectionMenu);
+                }
+
+                templateMenu.Children.Add(sectionContainer);
+            }
+
+            DynamicTemplatesPanel.Children.Add(templateContainer);
+        }
+
+        private Border CreateDynamicMenuBorder(string text, string tag, string textStyleKey, bool expandable, out TextBlock indicator)
+        {
+            indicator = null;
+
+            var border = new Border
+            {
+                Tag = tag,
+                Style = (Style)FindResource("MenuItemStyle")
+            };
+
+            var title = new TextBlock
+            {
+                Text = text,
+                Style = (Style)FindResource(textStyleKey),
+                TextWrapping = TextWrapping.Wrap
+            };
+
+            if (!expandable)
+            {
+                border.Child = title;
+                return border;
+            }
+
+            indicator = new TextBlock
+            {
+                Text = ">",
+                Margin = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0167a4")),
+                FontWeight = FontWeights.Bold
+            };
+
+            var panel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal
+            };
+
+            panel.Children.Add(title);
+            panel.Children.Add(indicator);
+            border.Child = panel;
+
+            return border;
+        }
+
+        private void DynamicTemplateHeader_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border border)
+            {
+                ToggleDynamicMenu(border);
+                MenuItem_Click(sender, e);
+            }
+        }
+
+        private void DynamicSectionHeader_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border border)
+            {
+                if (dynamicMenus.ContainsKey(border))
+                {
+                    ToggleDynamicMenu(border);
+                }
+
+                MenuItem_Click(sender, e);
+            }
+        }
+
+        private void DynamicLeaf_Click(object sender, MouseButtonEventArgs e)
+        {
+            MenuItem_Click(sender, e);
+        }
+
+        private void ToggleDynamicMenu(Border border)
+        {
+            if (!dynamicMenus.TryGetValue(border, out var menu))
+            {
+                return;
+            }
+
+            bool isExpanded = menu.Visibility != Visibility.Visible;
+            menu.Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed;
+
+            if (dynamicIndicators.TryGetValue(border, out var indicator))
+            {
+                indicator.Text = isExpanded ? "v" : ">";
+            }
+        }
+
+        private string BuildSectionTitle(Section section)
+        {
+            if (string.IsNullOrWhiteSpace(section.Title))
+            {
+                return $"Раздел {section.Number}";
+            }
+
+            return $"Раздел {section.Number}. {section.Title}";
+        }
+
+        private string BuildSubSectionTitle(Section section, SubSection subsection)
+        {
+            string prefix = section != null
+                ? $"{section.Number}.{subsection.Number}"
+                : subsection.Number.ToString();
+
+            if (string.IsNullOrWhiteSpace(subsection.Title))
+            {
+                return prefix;
+            }
+
+            return $"{prefix} {subsection.Title}";
+        }
+
+        private bool TryShowDynamicContent(Border menuItem)
+        {
+            if (dynamicTemplates.TryGetValue(menuItem, out var templateEntry))
+            {
+                MainContentControl.Content = CreateReportContent(templateEntry);
+                return true;
+            }
+
+            if (dynamicSections.TryGetValue(menuItem, out var section))
+            {
+                MainContentControl.Content = CreateSectionContent(section);
+                return true;
+            }
+
+            if (dynamicSubSections.TryGetValue(menuItem, out var subsection))
+            {
+                MainContentControl.Content = CreateSubSectionContent(subsection);
+                return true;
+            }
+
+            return false;
+        }
+
+        private UIElement CreateReportContent(DynamicTemplateEntry templateEntry)
+        {
+            var stack = CreateContentStack(templateEntry.DisplayTitle,
+                $"Структура взята из test.db. Отчет-источник: {templateEntry.Report.Title}");
+
+            foreach (var section in templateEntry.Report.Sections.OrderBy(s => s.Number))
+            {
+                var sectionLines = section.SubSections != null && section.SubSections.Any()
+                    ? section.SubSections.OrderBy(s => s.Number).Select(s => BuildSubSectionTitle(section, s))
+                    : new[] { "Подразделы отсутствуют" };
+
+                stack.Children.Add(CreateTextCard(BuildSectionTitle(section), string.Join(Environment.NewLine, sectionLines)));
+            }
+
+            return new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = stack
+            };
+        }
+
+        private UIElement CreateSectionContent(Section section)
+        {
+            var stack = CreateContentStack(BuildSectionTitle(section),
+                "Раздел загружен из test.db и готов для дальнейшей привязки к экрану.");
+
+            var subsectionLines = section.SubSections != null && section.SubSections.Any()
+                ? section.SubSections.OrderBy(s => s.Number).Select(s => BuildSubSectionTitle(section, s))
+                : new[] { "Подразделы отсутствуют" };
+
+            stack.Children.Add(CreateTextCard("Подразделы", string.Join(Environment.NewLine, subsectionLines)));
+
+            return new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = stack
+            };
+        }
+
+        private UIElement CreateSubSectionContent(SubSection subsection)
+        {
+            string title = BuildSubSectionTitle(subsection.Section, subsection);
+            var stack = CreateContentStack(title,
+                "Подраздел загружен из test.db. Ниже показаны текстовые блоки и таблицы, если они есть.");
+
+            if (subsection.Texts != null && subsection.Texts.Any())
+            {
+                foreach (var text in subsection.Texts)
+                {
+                    stack.Children.Add(CreateTextCard($"Текст ({text.PatternName})", text.Content));
+                }
+            }
+            else
+            {
+                stack.Children.Add(CreateTextCard("Текст", "Для этого подраздела текстовые блоки в базе не найдены."));
+            }
+
+            if (subsection.Tables != null && subsection.Tables.Any())
+            {
+                foreach (var table in subsection.Tables)
+                {
+                    stack.Children.Add(CreateContentCard(table.Title, CreateTablePreview(table)));
+                }
+            }
+
+            return new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = stack
+            };
+        }
+
+        private StackPanel CreateContentStack(string title, string subtitle)
+        {
+            var stack = new StackPanel
+            {
+                Margin = new Thickness(24)
+            };
+
+            stack.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontSize = 22,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0167a4")),
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            stack.Children.Add(new TextBlock
+            {
+                Text = subtitle,
+                Margin = new Thickness(0, 8, 0, 18),
+                Foreground = Brushes.DimGray,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            return stack;
+        }
+
+        private Border CreateTextCard(string title, string text)
+        {
+            return CreateContentCard(title, new TextBlock
+            {
+                Text = text,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#343a40"))
+            });
+        }
+
+        private Border CreateContentCard(string title, UIElement content)
+        {
+            var panel = new StackPanel();
+            panel.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 8),
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0167a4"))
+            });
+            panel.Children.Add(content);
+
+            return new Border
+            {
+                Background = Brushes.White,
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(16),
+                Margin = new Thickness(0, 0, 0, 12),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#d6e2ea")),
+                BorderThickness = new Thickness(1),
+                Child = panel
+            };
+        }
+
+        private UIElement CreateTablePreview(Table table)
+        {
+            var panel = new StackPanel();
+            var groupedRows = table.TableItems
+                .OrderBy(item => item.Row)
+                .ThenBy(item => item.Column)
+                .GroupBy(item => item.Row);
+
+            foreach (var row in groupedRows)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = string.Join(" | ", row.Select(item => item.Header)),
+                    Margin = new Thickness(0, 0, 0, 4),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#343a40"))
+                });
+            }
+
+            return panel;
         }
 
         public class CalendarDay
@@ -615,6 +1034,11 @@ namespace Project_bpi
 
         private void ShowContentForMenuItem(Border menuItem)
         {
+            if (TryShowDynamicContent(menuItem))
+            {
+                return;
+            }
+
             if (menuItem == Item_11)
             {
                 MainContentControl.Content = new Item11View();

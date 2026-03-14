@@ -17,9 +17,9 @@ namespace Project_bpi.Services
         private readonly string databasePath;
         private SQLiteConnection _connection;
         
-        public DataBase()
+        public DataBase(string databaseFileName = "Kurs.db")
         {
-            databasePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Kurs.db");
+            databasePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, databaseFileName);
             _connectionString = $"Data Source={databasePath};";
         }
         // Запуск Базы данных
@@ -171,6 +171,36 @@ namespace Project_bpi.Services
             return patterns;
         }
 
+        public async Task<List<Report>> GetAllReports()
+        {
+            var reports = new List<Report>();
+
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                EnableForeignKeys(connection);
+
+                string query = "SELECT id, Title, Year, Pattern_id FROM Report ORDER BY Year DESC, Title";
+                using (var command = new SQLiteCommand(query, connection))
+                using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        reports.Add(new Report
+                        {
+                            Id = reader.GetInt32(0),
+                            Title = reader.GetString(1),
+                            Year = reader.GetInt32(2),
+                            PattarnId = reader.GetInt32(3),
+                            Sections = new List<Section>()
+                        });
+                    }
+                }
+            }
+
+            return reports;
+        }
+
         // Вывод уже готового отчётаы
         public async Task<Report> GetFullReport(int reportId)
         {
@@ -267,7 +297,7 @@ namespace Project_bpi.Services
                         foreach (var subsection in section.SubSections)
                         {
                             string tablesQuery = @"SELECT id, Title, Subsection_id, Pattern_name 
-                                              FROM Table WHERE Subsection_id = @SubsectionId";
+                                              FROM ""Table"" WHERE Subsection_id = @SubsectionId";
 
                             using (var command = new SQLiteCommand(tablesQuery, connection))
                             {
@@ -288,8 +318,8 @@ namespace Project_bpi.Services
                                     }
                                 }
                             }
-                            string textsQuery = @"SELECT id, Subsection_id, Text, Pattern_name 
-                                             FROM Text WHERE Subsection_id = @SubsectionId";
+                            string textsQuery = @"SELECT id, Subsection_id, Content, Pattern_name 
+                                             FROM ""Text"" WHERE Subsection_id = @SubsectionId";
 
                             using (var command = new SQLiteCommand(textsQuery, connection))
                             {
@@ -312,7 +342,7 @@ namespace Project_bpi.Services
                             foreach (var table in subsection.Tables)
                             {
                                 string itemsQuery = @"SELECT id, Table_id, Column, Row, Header 
-                                                 FROM Table_item WHERE Table_id = @TableId 
+                                                 FROM ""Table_item"" WHERE Table_id = @TableId 
                                                  ORDER BY Row, Column";
 
                                 using (var command = new SQLiteCommand(itemsQuery, connection))
@@ -380,7 +410,7 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = @"INSERT INTO Table (Title, Subsection_id, Pattern_name) 
+                string query = @"INSERT INTO ""Table"" (Title, Subsection_id, Pattern_name) 
                             VALUES (@Title, @SubsectionId, @PatternName);
                             SELECT last_insert_rowid();";
 
@@ -402,7 +432,7 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = @"UPDATE Table 
+                string query = @"UPDATE ""Table"" 
                             SET Title = @Title, Pattern_name = @PatternName 
                             WHERE id = @Id";
 
@@ -424,7 +454,7 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = "DELETE FROM Table WHERE id = @Id";
+                string query = "DELETE FROM \"Table\" WHERE id = @Id";
                 using (var command = new SQLiteCommand(query, connection))
                 {
                     command.Parameters.AddWithValue("@Id", tableId);
@@ -442,7 +472,7 @@ namespace Project_bpi.Services
 
                 Table table = null;
 
-                string tableQuery = "SELECT id, Title, Subsection_id, Pattern_name FROM Table WHERE id = @TableId";
+                string tableQuery = "SELECT id, Title, Subsection_id, Pattern_name FROM \"Table\" WHERE id = @TableId";
                 using (var command = new SQLiteCommand(tableQuery, connection))
                 {
                     command.Parameters.AddWithValue("@TableId", tableId);
@@ -464,7 +494,7 @@ namespace Project_bpi.Services
 
                 if (table != null)
                 {
-                    string itemsQuery = "SELECT id, Table_id, Column, Row, Header FROM Table_item WHERE Table_id = @TableId ORDER BY Row, Column";
+                    string itemsQuery = "SELECT id, Table_id, Column, Row, Header FROM \"Table_item\" WHERE Table_id = @TableId ORDER BY Row, Column";
                     using (var command = new SQLiteCommand(itemsQuery, connection))
                     {
                         command.Parameters.AddWithValue("@TableId", tableId);
@@ -497,7 +527,7 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = @"INSERT INTO Table_item (Table_id, Column, Row, Header) 
+                string query = @"INSERT INTO ""Table_item"" (Table_id, Column, Row, Header) 
                             VALUES (@TableId, @Column, @Row, @Header);
                             SELECT last_insert_rowid();";
 
@@ -520,7 +550,7 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = @"UPDATE Table_item 
+                string query = @"UPDATE ""Table_item"" 
                             SET Column = @Column, Row = @Row, Header = @Header 
                             WHERE id = @Id";
 
@@ -543,7 +573,7 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = "DELETE FROM Table_item WHERE id = @Id";
+                string query = "DELETE FROM \"Table_item\" WHERE id = @Id";
                 using (var command = new SQLiteCommand(query, connection))
                 {
                     command.Parameters.AddWithValue("@Id", itemId);
@@ -559,7 +589,7 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = "DELETE FROM Table_item WHERE Table_id = @TableId";
+                string query = "DELETE FROM \"Table_item\" WHERE Table_id = @TableId";
                 using (var command = new SQLiteCommand(query, connection))
                 {
                     command.Parameters.AddWithValue("@TableId", tableId);
@@ -576,7 +606,7 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = @"INSERT INTO Text (Subsection_id, Text, Pattern_name) 
+                string query = @"INSERT INTO ""Text"" (Subsection_id, Content, Pattern_name) 
                             VALUES (@SubsectionId, @Content, @PatternName);
                             SELECT last_insert_rowid();";
 
@@ -598,8 +628,8 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = @"UPDATE Text 
-                            SET Text = @Content, Pattern_name = @PatternName 
+                string query = @"UPDATE ""Text"" 
+                            SET Content = @Content, Pattern_name = @PatternName 
                             WHERE id = @Id";
 
                 using (var command = new SQLiteCommand(query, connection))
@@ -620,7 +650,7 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = "DELETE FROM Text WHERE id = @Id";
+                string query = "DELETE FROM \"Text\" WHERE id = @Id";
                 using (var command = new SQLiteCommand(query, connection))
                 {
                     command.Parameters.AddWithValue("@Id", textId);
@@ -638,7 +668,7 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = "SELECT id, Subsection_id, Text, Pattern_name FROM Text WHERE Subsection_id = @SubsectionId";
+                string query = "SELECT id, Subsection_id, Content, Pattern_name FROM \"Text\" WHERE Subsection_id = @SubsectionId";
                 using (var command = new SQLiteCommand(query, connection))
                 {
                     command.Parameters.AddWithValue("@SubsectionId", subsectionId);
@@ -755,7 +785,7 @@ namespace Project_bpi.Services
                 if (subsection != null)
                 {
                     // Получаем таблицы
-                    string tablesQuery = "SELECT id, Title, Subsection_id, Pattern_name FROM Table WHERE Subsection_id = @SubsectionId";
+                    string tablesQuery = "SELECT id, Title, Subsection_id, Pattern_name FROM \"Table\" WHERE Subsection_id = @SubsectionId";
                     using (var command = new SQLiteCommand(tablesQuery, connection))
                     {
                         command.Parameters.AddWithValue("@SubsectionId", subsectionId);
@@ -777,7 +807,7 @@ namespace Project_bpi.Services
                     }
 
                     // Получаем тексты
-                    string textsQuery = "SELECT id, Subsection_id, Text, Pattern_name FROM Text WHERE Subsection_id = @SubsectionId";
+                    string textsQuery = "SELECT id, Subsection_id, Content, Pattern_name FROM \"Text\" WHERE Subsection_id = @SubsectionId";
                     using (var command = new SQLiteCommand(textsQuery, connection))
                     {
                         command.Parameters.AddWithValue("@SubsectionId", subsectionId);
@@ -799,7 +829,7 @@ namespace Project_bpi.Services
                     // Для каждой таблицы получаем элементы
                     foreach (var table in subsection.Tables)
                     {
-                        string itemsQuery = "SELECT id, Table_id, Column, Row, Header FROM Table_item WHERE Table_id = @TableId ORDER BY Row, Column";
+                        string itemsQuery = "SELECT id, Table_id, Column, Row, Header FROM \"Table_item\" WHERE Table_id = @TableId ORDER BY Row, Column";
                         using (var command = new SQLiteCommand(itemsQuery, connection))
                         {
                             command.Parameters.AddWithValue("@TableId", table.Id);
@@ -945,7 +975,7 @@ namespace Project_bpi.Services
 
                     foreach (var subsection in section.SubSections)
                     {
-                        string tablesQuery = "SELECT id, Title, Subsection_id, Pattern_name FROM Table WHERE Subsection_id = @SubsectionId";
+                        string tablesQuery = "SELECT id, Title, Subsection_id, Pattern_name FROM \"Table\" WHERE Subsection_id = @SubsectionId";
                         using (var command = new SQLiteCommand(tablesQuery, connection))
                         {
                             command.Parameters.AddWithValue("@SubsectionId", subsection.Id);
@@ -965,7 +995,7 @@ namespace Project_bpi.Services
                                 }
                             }
                         }
-                        string textsQuery = "SELECT id, Subsection_id, Text, Pattern_name FROM Text WHERE Subsection_id = @SubsectionId";
+                        string textsQuery = "SELECT id, Subsection_id, Content, Pattern_name FROM \"Text\" WHERE Subsection_id = @SubsectionId";
                         using (var command = new SQLiteCommand(textsQuery, connection))
                         {
                             command.Parameters.AddWithValue("@SubsectionId", subsection.Id);
@@ -986,7 +1016,7 @@ namespace Project_bpi.Services
 
                         foreach (var table in subsection.Tables)
                         {
-                            string itemsQuery = "SELECT id, Table_id, Column, Row, Header FROM Table_item WHERE Table_id = @TableId ORDER BY Row, Column";
+                            string itemsQuery = "SELECT id, Table_id, Column, Row, Header FROM \"Table_item\" WHERE Table_id = @TableId ORDER BY Row, Column";
                             using (var command = new SQLiteCommand(itemsQuery, connection))
                             {
                                 command.Parameters.AddWithValue("@TableId", table.Id);
