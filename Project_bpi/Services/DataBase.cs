@@ -407,9 +407,9 @@ namespace Project_bpi.Services
             }
         }
 
-        public List<TemplateContent> GetContentsBySubsection(int subsectionId)
+        public List<Models.TemplateContent> GetContentsBySubsection(int subsectionId)
         {
-            var result = new List<TemplateContent>();
+            var result = new List<Models.TemplateContent>();
             using (var connection = new SQLiteConnection(_connectionString))
             {
                 connection.Open();
@@ -421,7 +421,7 @@ namespace Project_bpi.Services
                     {
                         while (reader.Read())
                         {
-                            result.Add(new TemplateContent
+                            result.Add(new Models.TemplateContent
                             {
                                 Id = reader.GetInt32(0),
                                 Description = reader.IsDBNull(1) ? null : reader.GetString(1),
@@ -436,7 +436,7 @@ namespace Project_bpi.Services
             return result;
         }
 
-        public int InsertContent(TemplateContent content)
+        public int InsertContent(Models.TemplateContent content)
         {
             using (var connection = new SQLiteConnection(_connectionString))
             {
@@ -457,7 +457,7 @@ namespace Project_bpi.Services
             }
         }
 
-        public void UpdateContent(TemplateContent content)
+        public void UpdateContent(Models.TemplateContent content)
         {
             using (var connection = new SQLiteConnection(_connectionString))
             {
