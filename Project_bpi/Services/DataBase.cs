@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Data.SQLite;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -21,6 +22,40 @@ namespace Project_bpi.Services
         {
             databasePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Kurs.db");
             _connectionString = $"Data Source={databasePath};";
+        }
+
+        // Создать пустой Word документ по указанному пути (требует установленный MS Word)
+        public void CreateEmptyWordDocument(string path)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            Type wordType = Type.GetTypeFromProgID("Word.Application");
+            if (wordType == null)
+                throw new InvalidOperationException("Microsoft Word is not installed on this machine.");
+
+            object wordApp = null;
+            object document = null;
+            try
+            {
+                wordApp = Activator.CreateInstance(wordType);
+                // use dynamic to call COM methods
+                dynamic app = wordApp;
+                app.Visible = false;
+                document = app.Documents.Add();
+                app.ActiveDocument.SaveAs2(path);
+                app.ActiveDocument.Close();
+                app.Quit();
+            }
+            finally
+            {
+                if (document != null)
+                {
+                    try { Marshal.ReleaseComObject(document); } catch { }
+                }
+                if (wordApp != null)
+                {
+                    try { Marshal.ReleaseComObject(wordApp); } catch { }
+                }
+            }
         }
 
         // Загрузка иерархии для одного шаблона

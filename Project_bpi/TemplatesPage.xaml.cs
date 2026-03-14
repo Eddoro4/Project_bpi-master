@@ -34,9 +34,9 @@ namespace Project_bpi
                 
             }
         }
-        async private void UpdateTemplates()
+        private void UpdateTemplates()
         {
-            var temp = await App.DB.GetTemplatesAsync();
+            var temp = App.DB.GetTemplates();
             Templates = new ObservableCollection<Template>(temp);
         }
     }
