@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Project_bpi.Services;
+using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Data;
@@ -13,5 +14,11 @@ namespace Project_bpi
     /// </summary>
     public partial class App : Application
     {
+        public static DataBase DB = new DataBase();
+        public App()
+        {
+            // Инициализация базы данных при запуске приложения
+            DB.InitializeDatabase();
+        }
     }
 }

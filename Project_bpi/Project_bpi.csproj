@@ -170,13 +170,12 @@
       <DependentUpon>Item_14View.xaml</DependentUpon>
     </Compile>
     <Compile Include="MaxHeightConverter.cs" />
-    <Compile Include="Models\PatternFile.cs" />
     <Compile Include="Models\Report.cs" />
-    <Compile Include="Models\Section.cs" />
-    <Compile Include="Models\SubSection.cs" />
-    <Compile Include="Models\Table.cs" />
-    <Compile Include="Models\Tableitem.cs" />
-    <Compile Include="Models\Text.cs" />
+    <Compile Include="Models\ReportData.cs" />
+    <Compile Include="Models\Template.cs" />
+    <Compile Include="Models\TemplateContent.cs" />
+    <Compile Include="Models\TemplateSection.cs" />
+    <Compile Include="Models\TemplateSubsection.cs" />
     <Compile Include="Services\DataBase.cs" />
     <Compile Include="Spravka_View.xaml.cs">
       <DependentUpon>Spravka_View.xaml</DependentUpon>

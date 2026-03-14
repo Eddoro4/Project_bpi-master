@@ -1,5 +1,7 @@
-﻿using System;
+﻿using Project_bpi.Models;
+using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -20,40 +22,22 @@ namespace Project_bpi
         public TemplatesPage()
         {
             InitializeComponent();
+            this.DataContext = this;
+            UpdateTemplates();
         }
-
-        private void TemplateButton_Click(object sender, RoutedEventArgs e)
-        {
-            Button button = sender as Button;
-            if (button != null)
+        private ObservableCollection<Template> _templates;
+        public ObservableCollection<Template> Templates { 
+            get { return _templates; }
+            set
             {
-                string templateName = button.Content.ToString();
-
-                // Здесь можно добавить логику загрузки/применения шаблона
-                MessageBox.Show($"Выбран шаблон: {templateName}\n\nШаблон будет загружен и применен.",
-                              "Шаблон выбран",
-                              MessageBoxButton.OK,
-                              MessageBoxImage.Information);
-
-                // Пример вызова метода загрузки шаблона:
-                // LoadTemplate(templateName);
+                _templates = value;
+                
             }
         }
-        private void EditTemplateButton_Click(object sender, RoutedEventArgs e)
+        async private void UpdateTemplates()
         {
-            // Логика редактирования шаблона
-            Button button = sender as Button;
-            if (button != null)
-            {
-                // Можно добавить логику для определения, какой шаблон редактируется
-                MessageBox.Show("Редактирование шаблона");
-            }
-        }
-
-        private void CreateTemplateButton_Click(object sender, RoutedEventArgs e)
-        {
-            // Логика создания нового шаблона
-            MessageBox.Show("Создание нового шаблона");
+            var temp = await App.DB.GetTemplatesAsync();
+            Templates = new ObservableCollection<Template>(temp);
         }
     }
 }

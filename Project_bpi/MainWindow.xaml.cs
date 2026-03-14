@@ -19,14 +19,12 @@ namespace Project_bpi
 {
     public partial class MainWindow : Window
     {
-        public DataBase DB = new DataBase();
 
         private Dictionary<Border, Border> parents = new Dictionary<Border, Border>();
         private DateTime _currentCalendarDate = DateTime.Today;
 
         public MainWindow()
         {
-            DB.InitializeDatabase();
             InitializeComponent();
             InitializeDateRange();
             InitializeMenuHierarchy();

@@ -6,11 +6,13 @@ using System.Threading.Tasks;
 
 namespace Project_bpi.Models
 {
-    public class Report
+    public class TemplateSubsection
     {
         public int Id { get; set; }
         public string Title { get; set; }
-        public int Template_Id { get; set; }
-        public string Created_at { get; set; }
+        public int Subsection_Number { get; set; }
+        public int SectionId { get; set; }
+
+        public List<TemplateContent> TemplateContents { get; set; }
     }
 }
