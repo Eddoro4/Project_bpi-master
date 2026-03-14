@@ -12,5 +12,6 @@ namespace Project_bpi.Models
         public string Name { get; set; }
         public int Year { get; set; }
         public string Path { get; set; } 
+        public List<TemplateSection> Sections { get; set; }
     }
 }

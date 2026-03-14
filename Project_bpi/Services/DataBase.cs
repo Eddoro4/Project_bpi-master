@@ -22,6 +22,47 @@ namespace Project_bpi.Services
             databasePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Kurs.db");
             _connectionString = $"Data Source={databasePath};";
         }
+
+        // Загрузка иерархии для одного шаблона
+        public Template GetTemplateWithHierarchy(int templateId)
+        {
+            var template = GetTemplateById(templateId);
+            if (template == null) return null;
+
+            var sections = GetSectionsByTemplate(templateId);
+            foreach (var section in sections)
+            {
+                var subsections = GetSubsectionsBySection(section.Id);
+                section.Subsections = new List<TemplateSubsection>();
+                foreach (var sub in subsections)
+                {
+                    var contents = GetContentsBySubsection(sub.Id);
+                    sub.TemplateContents = contents;
+                    section.Subsections.Add(sub);
+                }
+            }
+            template.Sections = sections;
+            return template;
+        }
+
+        // Загрузка иерархии для всех шаблонов
+        public List<Template> GetAllTemplatesWithHierarchy()
+        {
+            var templates = GetTemplates();
+            foreach (var template in templates)
+            {
+                template.Sections = GetSectionsByTemplate(template.Id);
+                foreach (var section in template.Sections)
+                {
+                    section.Subsections = GetSubsectionsBySection(section.Id);
+                    foreach (var sub in section.Subsections)
+                    {
+                        sub.TemplateContents = GetContentsBySubsection(sub.Id);
+                    }
+                }
+            }
+            return templates;
+        }
         // Запуск Базы данных
         public void InitializeDatabase()
         {
@@ -59,9 +100,9 @@ namespace Project_bpi.Services
 	                ""Description""	TEXT,
 	                ""Tag""	TEXT NOT NULL,
 	                ""Content_type""	TEXT NOT NULL CHECK(""Content_type"" IN ('text', 'table')),
-	                ""SubSectopn_id""	INTEGER NOT NULL,
+	                ""SubSection_id""	INTEGER NOT NULL,
 	                PRIMARY KEY(""Id"" AUTOINCREMENT),
-	                FOREIGN KEY(""SubSectopn_id"") REFERENCES ""Template_Subsection""(""Id"") on delete cascade
+	                FOREIGN KEY(""SubSection_id"") REFERENCES ""Template_Subsection""(""Id"") on delete cascade
                 );
                 CREATE TABLE IF NOT EXISTS ""Template_Section"" (
 	                ""Id""	INTEGER,
@@ -92,158 +133,7 @@ namespace Project_bpi.Services
                 }
             }
         }
-        public Task<ObservableCollection<Template>> GetTemplatesAsync()
-        {
-            return Task.Run(() =>
-            {
-                var templates = new ObservableCollection<Template>();
-                using (var connection = new SQLiteConnection(_connectionString))
-                {
-                    connection.Open();
-                    EnableForeignKeys(connection);
-                    string query = "SELECT Id, Name, Year, Path FROM Templates";
-                    using (var command = new SQLiteCommand(query, connection))
-                    {
-                        using (var reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                templates.Add(new Template
-                                {
-                                    Id = reader.GetInt32(0),
-                                    Name = reader.GetString(1),
-                                    Year = reader.GetInt32(2),
-                                    Path = reader.GetString(3)
-                                });
-                            }
-                            
-                        }
-                    }
-                }
-                return templates;
-            });
-        }
-        public Task<ObservableCollection<Report>> GetReportsAsync()
-        {
-            return Task.Run(() =>
-            {
-                var reports = new ObservableCollection<Report>();
-                using (var connection = new SQLiteConnection(_connectionString))
-                {
-                    connection.Open();
-                    EnableForeignKeys(connection);
-                    string query = "SELECT Id, Title, Template_id, Created_at FROM Reports";
-                    using (var command = new SQLiteCommand(query, connection))
-                    {
-                        using (var reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                reports.Add(new Report
-                                {
-                                    Id = reader.GetInt32(0),
-                                    Title = reader.GetString(1),
-                                    Template_Id = reader.GetInt32(2),
-                                    Created_at = reader.GetDateTime(3).ToString()
-                                });
-                            }
-                        }
-                    }
-                }
-                return reports;
-            });
-        }
-        public Task<ObservableCollection<Models.TemplateContent>> GetTemplateContentsAsync(int SubSectionId)
-        {
-            return Task.Run(() =>
-            {
-                var contents = new ObservableCollection<Models.TemplateContent>();
-                using (var connection = new SQLiteConnection(_connectionString))
-                {
-                    connection.Open();
-                    EnableForeignKeys(connection);
-                    string query = $"SELECT Id, Description, Tag, Content_type, SubSectopn_id FROM Template_Content where SubSectionId = {SubSectionId}";
-                    using (var command = new SQLiteCommand(query, connection))
-                    {
-                        using (var reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                contents.Add(new Models.TemplateContent
-                                {
-                                    Id = reader.GetInt32(0),
-                                    Description = reader.IsDBNull(1) ? null : reader.GetString(1),
-                                    Tag = reader.GetString(2),
-                                    ContentType = reader.GetString(3),
-                                    Subsection_Id = reader.GetInt32(4)
-                                });
-                            }
-                        }
-                    }
-                }
-                return contents;
-            });
-        }
-        public Task<ObservableCollection<TemplateSection>> GetTemplateSectionsAsync(int TemplateId)
-        {
-            return Task.Run(() =>
-            {
-                var sections = new ObservableCollection<TemplateSection>();
-                using (var connection = new SQLiteConnection(_connectionString))
-                {
-                    connection.Open();
-                    EnableForeignKeys(connection);
-                    string query = $"SELECT Id, Section_number, Title, Template_id FROM Template_Section where Template_id = {TemplateId}";
-                    using (var command = new SQLiteCommand(query, connection))
-                    {
-                        using (var reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                sections.Add(new TemplateSection
-                                {
-                                    Id = reader.GetInt32(0),
-                                    Section_Number = reader.GetInt32(1),
-                                    Title = reader.GetString(2),
-                                    Template_Id = reader.GetInt32(3)
-                                });
-                            }
-                        }
-                    }
-                }
-                return sections;
-            });
-        }
-        public Task<ObservableCollection<TemplateSubsection>> GetTemplateSubsectionsAsync(int SectionId)
-        {
-            return Task.Run(() =>
-            {
-                var subsections = new ObservableCollection<TemplateSubsection>();
-                using (var connection = new SQLiteConnection(_connectionString))
-                {
-                    connection.Open();
-                    EnableForeignKeys(connection);
-                    string query = $"SELECT Id, Subsection_number, Title, Section_id FROM Template_Subsection where Section_id = {SectionId}";
-                    using (var command = new SQLiteCommand(query, connection))
-                    {
-                        using (var reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                subsections.Add(new TemplateSubsection
-                                {
-                                    Id = reader.GetInt32(0),
-                                    Subsection_Number = reader.GetInt32(1),
-                                    Title = reader.GetString(2),
-                                    SectionId = reader.GetInt32(3)
-                                });
-                            }
-                        }
-                    }
-                }
-                return subsections;
-            });
-        }
+       
         // --------------------------------------------------------------------------------
 
         // Включение внешнего ключа(не трогать)
@@ -252,6 +142,485 @@ namespace Project_bpi.Services
             using (var command = new SQLiteCommand("PRAGMA foreign_keys = ON;", connection))
             {
                 command.ExecuteNonQuery();
+            }
+        }
+
+        // --------------------- Template methods ---------------------
+        public List<Template> GetTemplates()
+        {
+            var result = new List<Template>();
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var command = new SQLiteCommand("SELECT Id, Name, Year, Path FROM Templates", connection))
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        result.Add(new Template
+                        {
+                            Id = reader.GetInt32(0),
+                            Name = reader.IsDBNull(1) ? null : reader.GetString(1),
+                            Year = reader.GetInt32(2),
+                            Path = reader.IsDBNull(3) ? null : reader.GetString(3)
+                        });
+                    }
+                }
+            }
+            return result;
+        }
+
+        public Template GetTemplateById(int id)
+        {
+            Template template = null;
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("SELECT Id, Name, Year, Path FROM Templates WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            template = new Template
+                            {
+                                Id = reader.GetInt32(0),
+                                Name = reader.IsDBNull(1) ? null : reader.GetString(1),
+                                Year = reader.GetInt32(2),
+                                Path = reader.IsDBNull(3) ? null : reader.GetString(3)
+                            };
+                        }
+                    }
+                }
+            }
+            return template;
+        }
+
+        public int InsertTemplate(Template template)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("INSERT INTO Templates (Name, Year, Path) VALUES (@name, @year, @path);", connection))
+                {
+                    cmd.Parameters.AddWithValue("@name", (object)template.Name ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@year", template.Year);
+                    cmd.Parameters.AddWithValue("@path", template.Path ?? string.Empty);
+                    cmd.ExecuteNonQuery();
+                }
+                using (var last = new SQLiteCommand("SELECT last_insert_rowid();", connection))
+                {
+                    return Convert.ToInt32(last.ExecuteScalar());
+                }
+            }
+        }
+
+        public void UpdateTemplate(Template template)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("UPDATE Templates SET Name = @name, Year = @year, Path = @path WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@name", (object)template.Name ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@year", template.Year);
+                    cmd.Parameters.AddWithValue("@path", template.Path ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@id", template.Id);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public void DeleteTemplate(int id)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("DELETE FROM Templates WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        // --------------------- Sections / Subsections / Contents ---------------------
+        public List<TemplateSection> GetSectionsByTemplate(int templateId)
+        {
+            var result = new List<TemplateSection>();
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("SELECT Id, Section_number, Title, Template_id FROM Template_Section WHERE Template_id = @tid ORDER BY Section_number", connection))
+                {
+                    cmd.Parameters.AddWithValue("@tid", templateId);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            result.Add(new TemplateSection
+                            {
+                                Id = reader.GetInt32(0),
+                                Section_Number = reader.GetInt32(1),
+                                Title = reader.GetString(2),
+                                Template_Id = reader.GetInt32(3)
+                            });
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        public int InsertSection(TemplateSection section)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("INSERT INTO Template_Section (Section_number, Title, Template_id) VALUES (@num, @title, @tid)", connection))
+                {
+                    cmd.Parameters.AddWithValue("@num", section.Section_Number);
+                    cmd.Parameters.AddWithValue("@title", section.Title ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@tid", section.Template_Id);
+                    cmd.ExecuteNonQuery();
+                }
+                using (var last = new SQLiteCommand("SELECT last_insert_rowid();", connection))
+                {
+                    return Convert.ToInt32(last.ExecuteScalar());
+                }
+            }
+        }
+
+        public void UpdateSection(TemplateSection section)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("UPDATE Template_Section SET Section_number = @num, Title = @title WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@num", section.Section_Number);
+                    cmd.Parameters.AddWithValue("@title", section.Title ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@id", section.Id);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public void DeleteSection(int id)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("DELETE FROM Template_Section WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public List<TemplateSubsection> GetSubsectionsBySection(int sectionId)
+        {
+            var result = new List<TemplateSubsection>();
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("SELECT Id, Subsection_number, Title, Section_id FROM Template_Subsection WHERE Section_id = @sid ORDER BY Subsection_number", connection))
+                {
+                    cmd.Parameters.AddWithValue("@sid", sectionId);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            result.Add(new TemplateSubsection
+                            {
+                                Id = reader.GetInt32(0),
+                                Subsection_Number = reader.GetInt32(1),
+                                Title = reader.GetString(2),
+                                SectionId = reader.GetInt32(3)
+                            });
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        public int InsertSubsection(TemplateSubsection subsection)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("INSERT INTO Template_Subsection (Subsection_number, Title, Section_id) VALUES (@num, @title, @sid)", connection))
+                {
+                    cmd.Parameters.AddWithValue("@num", subsection.Subsection_Number);
+                    cmd.Parameters.AddWithValue("@title", subsection.Title ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@sid", subsection.SectionId);
+                    cmd.ExecuteNonQuery();
+                }
+                using (var last = new SQLiteCommand("SELECT last_insert_rowid();", connection))
+                {
+                    return Convert.ToInt32(last.ExecuteScalar());
+                }
+            }
+        }
+
+        public void UpdateSubsection(TemplateSubsection subsection)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("UPDATE Template_Subsection SET Subsection_number = @num, Title = @title WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@num", subsection.Subsection_Number);
+                    cmd.Parameters.AddWithValue("@title", subsection.Title ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@id", subsection.Id);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public void DeleteSubsection(int id)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("DELETE FROM Template_Subsection WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public List<TemplateContent> GetContentsBySubsection(int subsectionId)
+        {
+            var result = new List<TemplateContent>();
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("SELECT Id, Description, Tag, Content_type, SubSection_id FROM Template_Content WHERE SubSection_id = @ssid ORDER BY Id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@ssid", subsectionId);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            result.Add(new TemplateContent
+                            {
+                                Id = reader.GetInt32(0),
+                                Description = reader.IsDBNull(1) ? null : reader.GetString(1),
+                                Tag = reader.GetString(2),
+                                ContentType = reader.GetString(3),
+                                Subsection_Id = reader.GetInt32(4)
+                            });
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        public int InsertContent(TemplateContent content)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("INSERT INTO Template_Content (Description, Tag, Content_type, SubSection_id) VALUES (@desc, @tag, @ctype, @ssid)", connection))
+                {
+                    cmd.Parameters.AddWithValue("@desc", (object)content.Description ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@tag", content.Tag ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@ctype", content.ContentType ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@ssid", content.Subsection_Id);
+                    cmd.ExecuteNonQuery();
+                }
+                using (var last = new SQLiteCommand("SELECT last_insert_rowid();", connection))
+                {
+                    return Convert.ToInt32(last.ExecuteScalar());
+                }
+            }
+        }
+
+        public void UpdateContent(TemplateContent content)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("UPDATE Template_Content SET Description = @desc, Tag = @tag, Content_type = @ctype WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@desc", (object)content.Description ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@tag", content.Tag ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@ctype", content.ContentType ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@id", content.Id);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public void DeleteContent(int id)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("DELETE FROM Template_Content WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        // --------------------- Reports & ReportData ---------------------
+        public List<Report> GetReports()
+        {
+            var result = new List<Report>();
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("SELECT Id, Title, Template_id, Created_at FROM Reports ORDER BY Created_at DESC", connection))
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        result.Add(new Report
+                        {
+                            Id = reader.GetInt32(0),
+                            Title = reader.IsDBNull(1) ? null : reader.GetString(1),
+                            Template_Id = reader.GetInt32(2),
+                            Created_at = reader.IsDBNull(3) ? null : reader.GetString(3)
+                        });
+                    }
+                }
+            }
+            return result;
+        }
+
+        public int InsertReport(Report report)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("INSERT INTO Reports (Title, Template_id) VALUES (@title, @tid)", connection))
+                {
+                    cmd.Parameters.AddWithValue("@title", (object)report.Title ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@tid", report.Template_Id);
+                    cmd.ExecuteNonQuery();
+                }
+                using (var last = new SQLiteCommand("SELECT last_insert_rowid();", connection))
+                {
+                    return Convert.ToInt32(last.ExecuteScalar());
+                }
+            }
+        }
+
+        public void DeleteReport(int id)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("DELETE FROM Reports WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public List<ReportData> GetReportDataByReportId(int reportId)
+        {
+            var result = new List<ReportData>();
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("SELECT Id, Report_id, Content_id, Value FROM Report_data WHERE Report_id = @rid", connection))
+                {
+                    cmd.Parameters.AddWithValue("@rid", reportId);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            result.Add(new ReportData
+                            {
+                                Id = reader.GetInt32(0),
+                                Report_Id = reader.GetInt32(1),
+                                Content_Id = reader.GetInt32(2),
+                                Value = reader.IsDBNull(3) ? null : reader.GetString(3)
+                            });
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        public int InsertReportData(ReportData data)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("INSERT INTO Report_data (Report_id, Content_id, Value) VALUES (@rid, @cid, @val)", connection))
+                {
+                    cmd.Parameters.AddWithValue("@rid", data.Report_Id);
+                    cmd.Parameters.AddWithValue("@cid", data.Content_Id);
+                    cmd.Parameters.AddWithValue("@val", (object)data.Value ?? DBNull.Value);
+                    cmd.ExecuteNonQuery();
+                }
+                using (var last = new SQLiteCommand("SELECT last_insert_rowid();", connection))
+                {
+                    return Convert.ToInt32(last.ExecuteScalar());
+                }
+            }
+        }
+
+        public void UpdateReportData(ReportData data)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("UPDATE Report_data SET Value = @val WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@val", (object)data.Value ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@id", data.Id);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public void DeleteReportData(int id)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                EnableForeignKeys(connection);
+                using (var cmd = new SQLiteCommand("DELETE FROM Report_data WHERE Id = @id", connection))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);
+                    cmd.ExecuteNonQuery();
+                }
             }
         }
 
