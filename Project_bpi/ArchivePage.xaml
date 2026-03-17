@@ -171,7 +171,7 @@
                                 FontSize="12"
                                 FontWeight="SemiBold"/>
                         <Button Content="Применить" 
-                                Click="ApplyFilter_Click"
+                                Click="ApplyFilterFixed_Click"
                                 Style="{StaticResource FilterButtonStyle}"
                                 Padding="20,10"/>
                     </StackPanel>
