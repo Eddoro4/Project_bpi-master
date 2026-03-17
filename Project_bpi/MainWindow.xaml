@@ -291,34 +291,50 @@
             <Setter Property="Padding" Value="2"/>
             <Setter Property="Margin" Value="5,0,5,5"/>
         </Style>
-        <Style x:Key="AddTemplateButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#0167a4"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="10,8"/>
-            <Setter Property="Margin" Value="10,8,10,8"/>
-            <Setter Property="FontSize" Value="12"/>
+        <Style x:Key="SidebarOutlineButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="#0167a4"/>
+            <Setter Property="BorderBrush" Value="#d6e2ea"/>
+            <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="10,2"/>
+            <Setter Property="Margin" Value="10,8,10,8"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                CornerRadius="12"
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="15"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#01578c"/>
+                                <Setter TargetName="border" Property="Background" Value="#f0f8ff"/>
+                                <Setter Property="Foreground" Value="#004c8c"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter Property="Background" Value="#01466f"/>
+                                <Setter TargetName="border" Property="Background" Value="#e6f2ff"/>
+                                <Setter Property="Foreground" Value="#003d73"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.5"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <Style x:Key="AddTemplateButtonStyle" TargetType="Button" BasedOn="{StaticResource SidebarOutlineButtonStyle}">
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Margin" Value="10,6,10,10"/>
+            <Setter Property="FontSize" Value="12"/>
         </Style>
         <Style x:Key="CalendarNavButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
@@ -731,11 +747,11 @@
                                     </StackPanel>
                                 </StackPanel>
                             </StackPanel>
+                            <StackPanel x:Name="DynamicTemplatesPanel"/>
                             <Button x:Name="AddTemplateButton"
                                     Content="Добавить шаблон"
                                     Click="AddTemplateButton_Click"
                                     Style="{StaticResource AddTemplateButtonStyle}"/>
-                            <StackPanel x:Name="DynamicTemplatesPanel"/>
                             <Border x:Name="Item_Archive" MouseLeftButtonDown="Item_Archive_Click" Tag="main" Style="{StaticResource MenuItemStyle}">
                                 <TextBlock Text="Архив" Style="{StaticResource MenuHeaderStyle}"/>
                             </Border>
@@ -938,43 +954,9 @@
                 <!-- Кнопки - перемещены вниз -->
                 <StackPanel Grid.Row="1" Margin="10">
                     <!-- Кнопка "История изменений" -->
-                    <Button Height="40"
-        Background="White"
-        Foreground="#0167a4"
-        BorderBrush="#d6e2ea"
-        BorderThickness="1"
-        FontWeight="SemiBold"
-        Padding="10,2"
-        Click="HistoryButton_Click"
-        IsEnabled="True">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="border"
-                    Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="15"
-                    Padding="{TemplateBinding Padding}">
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <!-- Эффект при наведении -->
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="border" Property="Background" Value="#f0f8ff"/>
-                                        <Setter Property="Foreground" Value="#004c8c"/>
-                                    </Trigger>
-                                    <!-- Эффект при нажатии -->
-                                    <Trigger Property="IsPressed" Value="True">
-                                        <Setter TargetName="border" Property="Background" Value="#e6f2ff"/>
-                                        <Setter Property="Foreground" Value="#003d73"/>
-                                    </Trigger>
-                                    <!-- Состояние отключённой кнопки -->
-                                    <Trigger Property="IsEnabled" Value="False">
-                                        <Setter TargetName="border" Property="Opacity" Value="0.5"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
+                    <Button Click="HistoryButton_Click"
+        IsEnabled="True"
+        Style="{StaticResource SidebarOutlineButtonStyle}">
                         <TextBlock Text="История&#x0a;изменений" 
                TextAlignment="Center" 
                TextWrapping="Wrap"/>

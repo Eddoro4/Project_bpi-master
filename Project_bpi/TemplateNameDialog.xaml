@@ -15,12 +15,14 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Text="Введите название шаблона"
+        <TextBlock x:Name="PromptTextBlock"
+                   Text="Введите название шаблона"
                    FontSize="16"
                    FontWeight="SemiBold"
                    Foreground="#0167a4"/>
 
-        <TextBlock Grid.Row="1"
+        <TextBlock x:Name="LabelTextBlock"
+                   Grid.Row="1"
                    Margin="0,10,0,8"
                    Text="Название"
                    Foreground="#495057"/>

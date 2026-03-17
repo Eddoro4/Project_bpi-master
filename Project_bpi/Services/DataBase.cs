@@ -1,35 +1,44 @@
 ﻿using Project_bpi.Models;
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Data.SQLite;
 using System.IO;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
 namespace Project_bpi.Services
 {
-    public class DataBase : IDisposable
+    public class DataBase
     {
         private readonly string _connectionString;
         private readonly string databasePath;
-        private SQLiteConnection _connection;
+        
+        public string DatabasePath => databasePath;
         
         public DataBase(string databaseFileName = "Kurs.db")
         {
-            databasePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, databaseFileName);
+            databasePath = Path.IsPathRooted(databaseFileName)
+                ? databaseFileName
+                : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, databaseFileName);
             _connectionString = $"Data Source={databasePath};";
         }
         // Запуск Базы данных
-        public void InitializeDatabase()
+        public void InitializeDatabase(bool showMessageWhenCreated = true)
         {
             bool databaseExists = File.Exists(databasePath);
             if (!databaseExists)
             {
+                var directory = Path.GetDirectoryName(databasePath);
+                if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
                 File.Create(databasePath).Close();
-                MessageBox.Show("Файл базы данных не был обнаружен, создан новый файл базы данных.");
+                if (showMessageWhenCreated)
+                {
+                    MessageBox.Show("Файл базы данных не был обнаружен, создан новый файл базы данных.");
+                }
             }
             using (var connection = new SQLiteConnection(_connectionString))
             {
@@ -66,9 +75,11 @@ namespace Project_bpi.Services
                 CREATE TABLE IF NOT EXISTS ""Subsection"" (
                     ""id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                     ""Section_id"" INTEGER NOT NULL,
+                    ""ParentSubsection_id"" INTEGER NULL,
                     ""Number"" INTEGER NOT NULL,
                     ""Title"" TEXT,
-                    FOREIGN KEY(""Section_id"") REFERENCES ""Section""(""id"") ON DELETE CASCADE
+                    FOREIGN KEY(""Section_id"") REFERENCES ""Section""(""id"") ON DELETE CASCADE,
+                    FOREIGN KEY(""ParentSubsection_id"") REFERENCES ""Subsection""(""id"") ON DELETE CASCADE
                 );
 
                 CREATE TABLE IF NOT EXISTS ""Table"" (
@@ -85,6 +96,9 @@ namespace Project_bpi.Services
                     ""Column"" INTEGER NOT NULL,
                     ""Row"" INTEGER NOT NULL,
                     ""Header"" TEXT NOT NULL,
+                    ""ColSpan"" INTEGER NOT NULL DEFAULT 1,
+                    ""RowSpan"" INTEGER NOT NULL DEFAULT 1,
+                    ""IsHeader"" INTEGER NOT NULL DEFAULT 0,
                     FOREIGN KEY(""Table_id"") REFERENCES ""Table""(""id"") ON DELETE CASCADE
                 );
 
@@ -99,6 +113,31 @@ namespace Project_bpi.Services
                 {
                     command.ExecuteNonQuery();
                 }
+
+                EnsureColumnExists(connection, "Table_item", "ColSpan", @"ALTER TABLE ""Table_item"" ADD COLUMN ""ColSpan"" INTEGER NOT NULL DEFAULT 1");
+                EnsureColumnExists(connection, "Table_item", "RowSpan", @"ALTER TABLE ""Table_item"" ADD COLUMN ""RowSpan"" INTEGER NOT NULL DEFAULT 1");
+                EnsureColumnExists(connection, "Table_item", "IsHeader", @"ALTER TABLE ""Table_item"" ADD COLUMN ""IsHeader"" INTEGER NOT NULL DEFAULT 0");
+                EnsureColumnExists(connection, "Subsection", "ParentSubsection_id", @"ALTER TABLE ""Subsection"" ADD COLUMN ""ParentSubsection_id"" INTEGER NULL");
+            }
+        }
+
+        private void EnsureColumnExists(SQLiteConnection connection, string tableName, string columnName, string alterSql)
+        {
+            using (var command = new SQLiteCommand($@"PRAGMA table_info(""{tableName}"");", connection))
+            using (var reader = command.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    if (string.Equals(reader["name"]?.ToString(), columnName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+                }
+            }
+
+            using (var alterCommand = new SQLiteCommand(alterSql, connection))
+            {
+                alterCommand.ExecuteNonQuery();
             }
         }
 
@@ -124,6 +163,74 @@ namespace Project_bpi.Services
                 }
             }
         }
+
+        public async Task<int> AddReport(Report report)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                EnableForeignKeys(connection);
+
+                string query = @"INSERT INTO Report (Title, Year, Pattern_id)
+                            VALUES (@Title, @Year, @PatternId);
+                            SELECT last_insert_rowid();";
+
+                using (var command = new SQLiteCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@Title", report.Title);
+                    command.Parameters.AddWithValue("@Year", report.Year);
+                    command.Parameters.AddWithValue("@PatternId", report.PattarnId);
+
+                    return Convert.ToInt32(await command.ExecuteScalarAsync());
+                }
+            }
+        }
+
+        public async Task UpdateFilePattern(PatternFile pattern)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                EnableForeignKeys(connection);
+
+                string query = @"UPDATE FilePatterns
+                            SET Title = @Title, Year = @Year, Path = @Path
+                            WHERE id = @Id";
+
+                using (var command = new SQLiteCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@Id", pattern.Id);
+                    command.Parameters.AddWithValue("@Title", pattern.Title);
+                    command.Parameters.AddWithValue("@Year", pattern.Year);
+                    command.Parameters.AddWithValue("@Path", pattern.Path);
+
+                    await command.ExecuteNonQueryAsync();
+                }
+            }
+        }
+
+        public async Task UpdateReport(Report report)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                EnableForeignKeys(connection);
+
+                string query = @"UPDATE Report
+                            SET Title = @Title, Year = @Year, Pattern_id = @PatternId
+                            WHERE id = @Id";
+
+                using (var command = new SQLiteCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@Id", report.Id);
+                    command.Parameters.AddWithValue("@Title", report.Title);
+                    command.Parameters.AddWithValue("@Year", report.Year);
+                    command.Parameters.AddWithValue("@PatternId", report.PattarnId);
+
+                    await command.ExecuteNonQueryAsync();
+                }
+            }
+        }
         // Удаление шаблона
         public async Task DeleteFilePattern(int id)
         {
@@ -140,35 +247,6 @@ namespace Project_bpi.Services
                     await command.ExecuteNonQueryAsync();
                 }
             }
-        }
-
-        // Вывод всех шаблонов из бд
-        public async Task<List<PatternFile>> GetAllFilePatterns()
-        {
-            var patterns = new List<PatternFile>();
-
-            using (var connection = new SQLiteConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-                EnableForeignKeys(connection);
-
-                string query = "SELECT id, Title, Year, Path FROM FilePatterns";
-                using (var command = new SQLiteCommand(query, connection))
-                using (var reader = await command.ExecuteReaderAsync())
-                {
-                    while (await reader.ReadAsync())
-                    {
-                        patterns.Add(new PatternFile
-                        {
-                            Id = reader.GetInt32(0),
-                            Title = reader.GetString(1),
-                            Year = reader.GetInt32(2),
-                            Path = reader.GetString(3)
-                        });
-                    }
-                }
-            }
-            return patterns;
         }
 
         public async Task<List<Report>> GetAllReports()
@@ -245,162 +323,185 @@ namespace Project_bpi.Services
 
                 if (report != null)
                 {
-                    string sectionsQuery = @"SELECT id, Report_id, Number, Title 
-                                        FROM Section WHERE Report_id = @ReportId 
-                                        ORDER BY Number";
-
-                    using (var command = new SQLiteCommand(sectionsQuery, connection))
-                    {
-                        command.Parameters.AddWithValue("@ReportId", reportId);
-                        using (var reader = await command.ExecuteReaderAsync())
-                        {
-                            while (await reader.ReadAsync())
-                            {
-                                var section = new Section
-                                {
-                                    Id = reader.GetInt32(0),
-                                    ReportId = reader.GetInt32(1),
-                                    Number = reader.GetInt32(2),
-                                    Title = reader.IsDBNull(3) ? null : reader.GetString(3),
-                                    SubSections = new List<SubSection>()
-                                };
-                                report.Sections.Add(section);
-                            }
-                        }
-                    }
-                    foreach (var section in report.Sections)
-                    {
-                        string subsectionsQuery = @"SELECT id, Section_id, Number, Title 
-                                               FROM Subsection WHERE Section_id = @SectionId 
-                                               ORDER BY Number";
-
-                        using (var command = new SQLiteCommand(subsectionsQuery, connection))
-                        {
-                            command.Parameters.AddWithValue("@SectionId", section.Id);
-                            using (var reader = await command.ExecuteReaderAsync())
-                            {
-                                while (await reader.ReadAsync())
-                                {
-                                    var subsection = new SubSection
-                                    {
-                                        Id = reader.GetInt32(0),
-                                        SectionId = reader.GetInt32(1),
-                                        Number = reader.GetInt32(2),
-                                        Title = reader.IsDBNull(3) ? null : reader.GetString(3),
-                                        Tables = new List<Table>(),
-                                        Texts = new List<Text>()
-                                    };
-                                    section.SubSections.Add(subsection);
-                                }
-                            }
-                        }
-                        foreach (var subsection in section.SubSections)
-                        {
-                            string tablesQuery = @"SELECT id, Title, Subsection_id, Pattern_name 
-                                              FROM ""Table"" WHERE Subsection_id = @SubsectionId";
-
-                            using (var command = new SQLiteCommand(tablesQuery, connection))
-                            {
-                                command.Parameters.AddWithValue("@SubsectionId", subsection.Id);
-                                using (var reader = await command.ExecuteReaderAsync())
-                                {
-                                    while (await reader.ReadAsync())
-                                    {
-                                        var table = new Table
-                                        {
-                                            Id = reader.GetInt32(0),
-                                            Title = reader.GetString(1),
-                                            SubsectionId = reader.GetInt32(2),
-                                            PatternName = reader.GetString(3),
-                                            TableItems = new List<TableItem>()
-                                        };
-                                        subsection.Tables.Add(table);
-                                    }
-                                }
-                            }
-                            string textsQuery = @"SELECT id, Subsection_id, Content, Pattern_name 
-                                             FROM ""Text"" WHERE Subsection_id = @SubsectionId";
-
-                            using (var command = new SQLiteCommand(textsQuery, connection))
-                            {
-                                command.Parameters.AddWithValue("@SubsectionId", subsection.Id);
-                                using (var reader = await command.ExecuteReaderAsync())
-                                {
-                                    while (await reader.ReadAsync())
-                                    {
-                                        subsection.Texts.Add(new Text
-                                        {
-                                            Id = reader.GetInt32(0),
-                                            SubsectionId = reader.GetInt32(1),
-                                            Content = reader.GetString(2),
-                                            PatternName = reader.GetString(3)
-                                        });
-                                    }
-                                }
-                            }
-
-                            foreach (var table in subsection.Tables)
-                            {
-                                string itemsQuery = @"SELECT id, Table_id, Column, Row, Header 
-                                                 FROM ""Table_item"" WHERE Table_id = @TableId 
-                                                 ORDER BY Row, Column";
-
-                                using (var command = new SQLiteCommand(itemsQuery, connection))
-                                {
-                                    command.Parameters.AddWithValue("@TableId", table.Id);
-                                    using (var reader = await command.ExecuteReaderAsync())
-                                    {
-                                        while (await reader.ReadAsync())
-                                        {
-                                            table.TableItems.Add(new TableItem
-                                            {
-                                                Id = reader.GetInt32(0),
-                                                TableId = reader.GetInt32(1),
-                                                Column = reader.GetInt32(2),
-                                                Row = reader.GetInt32(3),
-                                                Header = reader.GetString(4)
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    await LoadSectionsAsync(connection, report);
                 }
             }
 
             return report;
         }
 
-        // Удалить отчёт
-        public async Task DeleteReport(int reportId)
+        private async Task LoadSectionsAsync(SQLiteConnection connection, Report report)
         {
-            using (var connection = new SQLiteConnection(_connectionString))
+            string sectionsQuery = @"SELECT id, Report_id, Number, Title
+                                     FROM Section
+                                     WHERE Report_id = @ReportId
+                                     ORDER BY Number";
+
+            using (var command = new SQLiteCommand(sectionsQuery, connection))
             {
-                await connection.OpenAsync();
-                EnableForeignKeys(connection);
-
-                using (var transaction = connection.BeginTransaction())
+                command.Parameters.AddWithValue("@ReportId", report.Id);
+                using (var reader = await command.ExecuteReaderAsync())
                 {
-                    try
+                    while (await reader.ReadAsync())
                     {
-                        string query = "DELETE FROM Report WHERE id = @Id";
-                        using (var command = new SQLiteCommand(query, connection, transaction))
+                        report.Sections.Add(new Section
                         {
-                            command.Parameters.AddWithValue("@Id", reportId);
-                            await command.ExecuteNonQueryAsync();
-                        }
-
-                        transaction.Commit();
+                            Id = reader.GetInt32(0),
+                            ReportId = reader.GetInt32(1),
+                            Number = reader.GetInt32(2),
+                            Title = reader.IsDBNull(3) ? null : reader.GetString(3),
+                            Report = report,
+                            SubSections = new List<SubSection>()
+                        });
                     }
-                    catch
+                }
+            }
+
+            foreach (var section in report.Sections)
+            {
+                await LoadSubSectionsAsync(connection, section);
+            }
+        }
+
+        private async Task LoadSubSectionsAsync(SQLiteConnection connection, Section section)
+        {
+            var allSubSections = new List<SubSection>();
+            var subSectionMap = new Dictionary<int, SubSection>();
+
+            string subsectionsQuery = @"SELECT id, Section_id, ParentSubsection_id, Number, Title
+                                        FROM Subsection
+                                        WHERE Section_id = @SectionId
+                                        ORDER BY COALESCE(ParentSubsection_id, 0), Number, id";
+
+            using (var command = new SQLiteCommand(subsectionsQuery, connection))
+            {
+                command.Parameters.AddWithValue("@SectionId", section.Id);
+                using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
                     {
-                        transaction.Rollback();
-                        throw;
+                        var subsection = new SubSection
+                        {
+                            Id = reader.GetInt32(0),
+                            SectionId = reader.GetInt32(1),
+                            ParentSubsectionId = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2),
+                            Number = reader.GetInt32(3),
+                            Title = reader.IsDBNull(4) ? null : reader.GetString(4),
+                            Section = section,
+                            SubSections = new List<SubSection>(),
+                            Tables = new List<Table>(),
+                            Texts = new List<Text>()
+                        };
+
+                        allSubSections.Add(subsection);
+                        subSectionMap[subsection.Id] = subsection;
+                    }
+                }
+            }
+
+            foreach (var subsection in allSubSections)
+            {
+                if (subsection.ParentSubsectionId.HasValue &&
+                    subSectionMap.TryGetValue(subsection.ParentSubsectionId.Value, out var parentSubsection))
+                {
+                    subsection.ParentSubsection = parentSubsection;
+                    parentSubsection.SubSections.Add(subsection);
+                }
+                else
+                {
+                    section.SubSections.Add(subsection);
+                }
+            }
+
+            foreach (var subsection in allSubSections)
+            {
+                await LoadSubSectionContentsAsync(connection, subsection);
+            }
+        }
+
+        private async Task LoadSubSectionContentsAsync(SQLiteConnection connection, SubSection subsection)
+        {
+            string tablesQuery = @"SELECT id, Title, Subsection_id, Pattern_name
+                                   FROM ""Table""
+                                   WHERE Subsection_id = @SubsectionId";
+
+            using (var command = new SQLiteCommand(tablesQuery, connection))
+            {
+                command.Parameters.AddWithValue("@SubsectionId", subsection.Id);
+                using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        subsection.Tables.Add(new Table
+                        {
+                            Id = reader.GetInt32(0),
+                            Title = reader.GetString(1),
+                            SubsectionId = reader.GetInt32(2),
+                            PatternName = reader.GetString(3),
+                            TableItems = new List<TableItem>()
+                        });
+                    }
+                }
+            }
+
+            string textsQuery = @"SELECT id, Subsection_id, Content, Pattern_name
+                                  FROM ""Text""
+                                  WHERE Subsection_id = @SubsectionId";
+
+            using (var command = new SQLiteCommand(textsQuery, connection))
+            {
+                command.Parameters.AddWithValue("@SubsectionId", subsection.Id);
+                using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        subsection.Texts.Add(new Text
+                        {
+                            Id = reader.GetInt32(0),
+                            SubsectionId = reader.GetInt32(1),
+                            Content = reader.GetString(2),
+                            PatternName = reader.GetString(3)
+                        });
+                    }
+                }
+            }
+
+            foreach (var table in subsection.Tables)
+            {
+                await LoadTableItemsAsync(connection, table);
+            }
+        }
+
+        private async Task LoadTableItemsAsync(SQLiteConnection connection, Table table)
+        {
+            string itemsQuery = @"SELECT id, Table_id, Column, Row, Header, ColSpan, RowSpan, IsHeader
+                                  FROM ""Table_item""
+                                  WHERE Table_id = @TableId
+                                  ORDER BY IsHeader DESC, Row, Column";
+
+            using (var command = new SQLiteCommand(itemsQuery, connection))
+            {
+                command.Parameters.AddWithValue("@TableId", table.Id);
+                using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        table.TableItems.Add(new TableItem
+                        {
+                            Id = reader.GetInt32(0),
+                            TableId = reader.GetInt32(1),
+                            Column = reader.GetInt32(2),
+                            Row = reader.GetInt32(3),
+                            Header = reader.GetString(4),
+                            ColSpan = reader.IsDBNull(5) ? 1 : reader.GetInt32(5),
+                            RowSpan = reader.IsDBNull(6) ? 1 : reader.GetInt32(6),
+                            IsHeader = !reader.IsDBNull(7) && reader.GetInt32(7) == 1
+                        });
                     }
                 }
             }
         }
+
         // ----------------------------------------------------------------------
         // Работа с таблицей
         public async Task<int> AddTable(Table table)
@@ -463,61 +564,6 @@ namespace Project_bpi.Services
             }
         }
 
-        public async Task<Table> GetTableWithItems(int tableId)
-        {
-            using (var connection = new SQLiteConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-                EnableForeignKeys(connection);
-
-                Table table = null;
-
-                string tableQuery = "SELECT id, Title, Subsection_id, Pattern_name FROM \"Table\" WHERE id = @TableId";
-                using (var command = new SQLiteCommand(tableQuery, connection))
-                {
-                    command.Parameters.AddWithValue("@TableId", tableId);
-                    using (var reader = await command.ExecuteReaderAsync())
-                    {
-                        if (await reader.ReadAsync())
-                        {
-                            table = new Table
-                            {
-                                Id = reader.GetInt32(0),
-                                Title = reader.GetString(1),
-                                SubsectionId = reader.GetInt32(2),
-                                PatternName = reader.GetString(3),
-                                TableItems = new ObservableCollection<TableItem>()
-                            };
-                        }
-                    }
-                }
-
-                if (table != null)
-                {
-                    string itemsQuery = "SELECT id, Table_id, Column, Row, Header FROM \"Table_item\" WHERE Table_id = @TableId ORDER BY Row, Column";
-                    using (var command = new SQLiteCommand(itemsQuery, connection))
-                    {
-                        command.Parameters.AddWithValue("@TableId", tableId);
-                        using (var reader = await command.ExecuteReaderAsync())
-                        {
-                            while (await reader.ReadAsync())
-                            {
-                                table.TableItems.Add(new TableItem
-                                {
-                                    Id = reader.GetInt32(0),
-                                    TableId = reader.GetInt32(1),
-                                    Column = reader.GetInt32(2),
-                                    Row = reader.GetInt32(3),
-                                    Header = reader.GetString(4)
-                                });
-                            }
-                        }
-                    }
-                }
-
-                return table;
-            }
-        }
         // ----------------------------------------------------------------------
         // Работа с ячейками таблицы
         public async Task<int> AddTableItem(TableItem item)
@@ -527,8 +573,8 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = @"INSERT INTO ""Table_item"" (Table_id, Column, Row, Header) 
-                            VALUES (@TableId, @Column, @Row, @Header);
+                string query = @"INSERT INTO ""Table_item"" (Table_id, Column, Row, Header, ColSpan, RowSpan, IsHeader) 
+                            VALUES (@TableId, @Column, @Row, @Header, @ColSpan, @RowSpan, @IsHeader);
                             SELECT last_insert_rowid();";
 
                 using (var command = new SQLiteCommand(query, connection))
@@ -537,47 +583,11 @@ namespace Project_bpi.Services
                     command.Parameters.AddWithValue("@Column", item.Column);
                     command.Parameters.AddWithValue("@Row", item.Row);
                     command.Parameters.AddWithValue("@Header", item.Header);
+                    command.Parameters.AddWithValue("@ColSpan", item.ColSpan);
+                    command.Parameters.AddWithValue("@RowSpan", item.RowSpan);
+                    command.Parameters.AddWithValue("@IsHeader", item.IsHeader ? 1 : 0);
 
                     return Convert.ToInt32(await command.ExecuteScalarAsync());
-                }
-            }
-        }
-
-        public async Task UpdateTableItem(TableItem item)
-        {
-            using (var connection = new SQLiteConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-                EnableForeignKeys(connection);
-
-                string query = @"UPDATE ""Table_item"" 
-                            SET Column = @Column, Row = @Row, Header = @Header 
-                            WHERE id = @Id";
-
-                using (var command = new SQLiteCommand(query, connection))
-                {
-                    command.Parameters.AddWithValue("@Id", item.Id);
-                    command.Parameters.AddWithValue("@Column", item.Column);
-                    command.Parameters.AddWithValue("@Row", item.Row);
-                    command.Parameters.AddWithValue("@Header", item.Header);
-
-                    await command.ExecuteNonQueryAsync();
-                }
-            }
-        }
-
-        public async Task DeleteTableItem(int itemId)
-        {
-            using (var connection = new SQLiteConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-                EnableForeignKeys(connection);
-
-                string query = "DELETE FROM \"Table_item\" WHERE id = @Id";
-                using (var command = new SQLiteCommand(query, connection))
-                {
-                    command.Parameters.AddWithValue("@Id", itemId);
-                    await command.ExecuteNonQueryAsync();
                 }
             }
         }
@@ -659,37 +669,6 @@ namespace Project_bpi.Services
             }
         }
 
-        public async Task<List<Text>> GetTextsBySubsection(int subsectionId)
-        {
-            var texts = new List<Text>();
-
-            using (var connection = new SQLiteConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-                EnableForeignKeys(connection);
-
-                string query = "SELECT id, Subsection_id, Content, Pattern_name FROM \"Text\" WHERE Subsection_id = @SubsectionId";
-                using (var command = new SQLiteCommand(query, connection))
-                {
-                    command.Parameters.AddWithValue("@SubsectionId", subsectionId);
-                    using (var reader = await command.ExecuteReaderAsync())
-                    {
-                        while (await reader.ReadAsync())
-                        {
-                            texts.Add(new Text
-                            {
-                                Id = reader.GetInt32(0),
-                                SubsectionId = reader.GetInt32(1),
-                                Content = reader.GetString(2),
-                                PatternName = reader.GetString(3)
-                            });
-                        }
-                    }
-                }
-            }
-
-            return texts;
-        }
         // -----------------------------------------------------------------------------
         // работа с подразрелами
         public async Task<int> AddSubsection(SubSection subsection)
@@ -699,13 +678,14 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = @"INSERT INTO Subsection (Section_id, Number, Title) 
-                            VALUES (@SectionId, @Number, @Title);
+                string query = @"INSERT INTO Subsection (Section_id, ParentSubsection_id, Number, Title) 
+                            VALUES (@SectionId, @ParentSubsectionId, @Number, @Title);
                             SELECT last_insert_rowid();";
 
                 using (var command = new SQLiteCommand(query, connection))
                 {
                     command.Parameters.AddWithValue("@SectionId", subsection.SectionId);
+                    command.Parameters.AddWithValue("@ParentSubsectionId", subsection.ParentSubsectionId ?? (object)DBNull.Value);
                     command.Parameters.AddWithValue("@Number", subsection.Number);
                     command.Parameters.AddWithValue("@Title", subsection.Title ?? (object)DBNull.Value);
 
@@ -722,12 +702,13 @@ namespace Project_bpi.Services
                 EnableForeignKeys(connection);
 
                 string query = @"UPDATE Subsection 
-                            SET Number = @Number, Title = @Title 
+                            SET ParentSubsection_id = @ParentSubsectionId, Number = @Number, Title = @Title 
                             WHERE id = @Id";
 
                 using (var command = new SQLiteCommand(query, connection))
                 {
                     command.Parameters.AddWithValue("@Id", subsection.Id);
+                    command.Parameters.AddWithValue("@ParentSubsectionId", subsection.ParentSubsectionId ?? (object)DBNull.Value);
                     command.Parameters.AddWithValue("@Number", subsection.Number);
                     command.Parameters.AddWithValue("@Title", subsection.Title ?? (object)DBNull.Value);
 
@@ -743,117 +724,44 @@ namespace Project_bpi.Services
                 await connection.OpenAsync();
                 EnableForeignKeys(connection);
 
-                string query = "DELETE FROM Subsection WHERE id = @Id";
-                using (var command = new SQLiteCommand(query, connection))
+                using (var transaction = connection.BeginTransaction())
                 {
-                    command.Parameters.AddWithValue("@Id", subsectionId);
-                    await command.ExecuteNonQueryAsync();
+                    await DeleteSubsectionInternalAsync(connection, transaction, subsectionId);
+                    transaction.Commit();
                 }
             }
         }
 
-        public async Task<SubSection> GetSubsectionWithContents(int subsectionId)
+        private async Task DeleteSubsectionInternalAsync(SQLiteConnection connection, SQLiteTransaction transaction, int subsectionId)
         {
-            using (var connection = new SQLiteConnection(_connectionString))
+            var childIds = new List<int>();
+
+            const string childQuery = @"SELECT id FROM Subsection WHERE ParentSubsection_id = @ParentSubsectionId";
+            using (var command = new SQLiteCommand(childQuery, connection, transaction))
             {
-                await connection.OpenAsync();
-                EnableForeignKeys(connection);
-
-                SubSection subsection = null;
-
-                string subsectionQuery = "SELECT id, Section_id, Number, Title FROM Subsection WHERE id = @Id";
-                using (var command = new SQLiteCommand(subsectionQuery, connection))
+                command.Parameters.AddWithValue("@ParentSubsectionId", subsectionId);
+                using (var reader = await command.ExecuteReaderAsync())
                 {
-                    command.Parameters.AddWithValue("@Id", subsectionId);
-                    using (var reader = await command.ExecuteReaderAsync())
+                    while (await reader.ReadAsync())
                     {
-                        if (await reader.ReadAsync())
-                        {
-                            subsection = new SubSection
-                            {
-                                Id = reader.GetInt32(0),
-                                SectionId = reader.GetInt32(1),
-                                Number = reader.GetInt32(2),
-                                Title = reader.IsDBNull(3) ? null : reader.GetString(3),
-                                Tables = new ObservableCollection<Table>(),
-                                Texts = new ObservableCollection<Text>()
-                            };
-                        }
+                        childIds.Add(reader.GetInt32(0));
                     }
                 }
+            }
 
-                if (subsection != null)
-                {
-                    // Получаем таблицы
-                    string tablesQuery = "SELECT id, Title, Subsection_id, Pattern_name FROM \"Table\" WHERE Subsection_id = @SubsectionId";
-                    using (var command = new SQLiteCommand(tablesQuery, connection))
-                    {
-                        command.Parameters.AddWithValue("@SubsectionId", subsectionId);
-                        using (var reader = await command.ExecuteReaderAsync())
-                        {
-                            while (await reader.ReadAsync())
-                            {
-                                var table = new Table
-                                {
-                                    Id = reader.GetInt32(0),
-                                    Title = reader.GetString(1),
-                                    SubsectionId = reader.GetInt32(2),
-                                    PatternName = reader.GetString(3),
-                                    TableItems = new ObservableCollection<TableItem>()
-                                };
-                                subsection.Tables.Add(table);
-                            }
-                        }
-                    }
+            foreach (int childId in childIds)
+            {
+                await DeleteSubsectionInternalAsync(connection, transaction, childId);
+            }
 
-                    // Получаем тексты
-                    string textsQuery = "SELECT id, Subsection_id, Content, Pattern_name FROM \"Text\" WHERE Subsection_id = @SubsectionId";
-                    using (var command = new SQLiteCommand(textsQuery, connection))
-                    {
-                        command.Parameters.AddWithValue("@SubsectionId", subsectionId);
-                        using (var reader = await command.ExecuteReaderAsync())
-                        {
-                            while (await reader.ReadAsync())
-                            {
-                                subsection.Texts.Add(new Text
-                                {
-                                    Id = reader.GetInt32(0),
-                                    SubsectionId = reader.GetInt32(1),
-                                    Content = reader.GetString(2),
-                                    PatternName = reader.GetString(3)
-                                });
-                            }
-                        }
-                    }
-
-                    // Для каждой таблицы получаем элементы
-                    foreach (var table in subsection.Tables)
-                    {
-                        string itemsQuery = "SELECT id, Table_id, Column, Row, Header FROM \"Table_item\" WHERE Table_id = @TableId ORDER BY Row, Column";
-                        using (var command = new SQLiteCommand(itemsQuery, connection))
-                        {
-                            command.Parameters.AddWithValue("@TableId", table.Id);
-                            using (var reader = await command.ExecuteReaderAsync())
-                            {
-                                while (await reader.ReadAsync())
-                                {
-                                    table.TableItems.Add(new TableItem
-                                    {
-                                        Id = reader.GetInt32(0),
-                                        TableId = reader.GetInt32(1),
-                                        Column = reader.GetInt32(2),
-                                        Row = reader.GetInt32(3),
-                                        Header = reader.GetString(4)
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return subsection;
+            const string deleteQuery = @"DELETE FROM Subsection WHERE id = @Id";
+            using (var command = new SQLiteCommand(deleteQuery, connection, transaction))
+            {
+                command.Parameters.AddWithValue("@Id", subsectionId);
+                await command.ExecuteNonQueryAsync();
             }
         }
+
         // -----------------------------------------------------------------------------
         // Работа с разделами
         public async Task<int> AddSection(Section section)
@@ -916,167 +824,6 @@ namespace Project_bpi.Services
             }
         }
 
-        public async Task<Section> GetSectionWithContents(int sectionId)
-        {
-            using (var connection = new SQLiteConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-                EnableForeignKeys(connection);
-
-                Section section = null;
-
-                string sectionQuery = "SELECT id, Report_id, Number, Title FROM Section WHERE id = @Id";
-                using (var command = new SQLiteCommand(sectionQuery, connection))
-                {
-                    command.Parameters.AddWithValue("@Id", sectionId);
-                    using (var reader = await command.ExecuteReaderAsync())
-                    {
-                        if (await reader.ReadAsync())
-                        {
-                            section = new Section
-                            {
-                                Id = reader.GetInt32(0),
-                                ReportId = reader.GetInt32(1),
-                                Number = reader.GetInt32(2),
-                                Title = reader.IsDBNull(3) ? null : reader.GetString(3),
-                                SubSections = new ObservableCollection<SubSection>()
-                            };
-                        }
-                    }
-                }
-
-                if (section != null)
-                {
-                    string subsectionsQuery = @"SELECT id, Section_id, Number, Title 
-                                       FROM Subsection 
-                                       WHERE Section_id = @SectionId 
-                                       ORDER BY Number";
-
-                    using (var command = new SQLiteCommand(subsectionsQuery, connection))
-                    {
-                        command.Parameters.AddWithValue("@SectionId", sectionId);
-                        using (var reader = await command.ExecuteReaderAsync())
-                        {
-                            while (await reader.ReadAsync())
-                            {
-                                var subsection = new SubSection
-                                {
-                                    Id = reader.GetInt32(0),
-                                    SectionId = reader.GetInt32(1),
-                                    Number = reader.GetInt32(2),
-                                    Title = reader.IsDBNull(3) ? null : reader.GetString(3),
-                                    Tables = new ObservableCollection<Table>(),
-                                    Texts = new ObservableCollection<Text>()
-                                };
-                                section.SubSections.Add(subsection);
-                            }
-                        }
-                    }
-
-                    foreach (var subsection in section.SubSections)
-                    {
-                        string tablesQuery = "SELECT id, Title, Subsection_id, Pattern_name FROM \"Table\" WHERE Subsection_id = @SubsectionId";
-                        using (var command = new SQLiteCommand(tablesQuery, connection))
-                        {
-                            command.Parameters.AddWithValue("@SubsectionId", subsection.Id);
-                            using (var reader = await command.ExecuteReaderAsync())
-                            {
-                                while (await reader.ReadAsync())
-                                {
-                                    var table = new Table
-                                    {
-                                        Id = reader.GetInt32(0),
-                                        Title = reader.GetString(1),
-                                        SubsectionId = reader.GetInt32(2),
-                                        PatternName = reader.GetString(3),
-                                        TableItems = new ObservableCollection<TableItem>()
-                                    };
-                                    subsection.Tables.Add(table);
-                                }
-                            }
-                        }
-                        string textsQuery = "SELECT id, Subsection_id, Content, Pattern_name FROM \"Text\" WHERE Subsection_id = @SubsectionId";
-                        using (var command = new SQLiteCommand(textsQuery, connection))
-                        {
-                            command.Parameters.AddWithValue("@SubsectionId", subsection.Id);
-                            using (var reader = await command.ExecuteReaderAsync())
-                            {
-                                while (await reader.ReadAsync())
-                                {
-                                    subsection.Texts.Add(new Text
-                                    {
-                                        Id = reader.GetInt32(0),
-                                        SubsectionId = reader.GetInt32(1),
-                                        Content = reader.GetString(2),
-                                        PatternName = reader.GetString(3)
-                                    });
-                                }
-                            }
-                        }
-
-                        foreach (var table in subsection.Tables)
-                        {
-                            string itemsQuery = "SELECT id, Table_id, Column, Row, Header FROM \"Table_item\" WHERE Table_id = @TableId ORDER BY Row, Column";
-                            using (var command = new SQLiteCommand(itemsQuery, connection))
-                            {
-                                command.Parameters.AddWithValue("@TableId", table.Id);
-                                using (var reader = await command.ExecuteReaderAsync())
-                                {
-                                    while (await reader.ReadAsync())
-                                    {
-                                        table.TableItems.Add(new TableItem
-                                        {
-                                            Id = reader.GetInt32(0),
-                                            TableId = reader.GetInt32(1),
-                                            Column = reader.GetInt32(2),
-                                            Row = reader.GetInt32(3),
-                                            Header = reader.GetString(4)
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return section;
-            }
-        }
-
-        public async Task<List<Section>> GetSectionsByReport(int reportId)
-        {
-            var sections = new List<Section>();
-
-            using (var connection = new SQLiteConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-                EnableForeignKeys(connection);
-
-                string query = "SELECT id, Report_id, Number, Title FROM Section WHERE Report_id = @ReportId ORDER BY Number";
-                using (var command = new SQLiteCommand(query, connection))
-                {
-                    command.Parameters.AddWithValue("@ReportId", reportId);
-                    using (var reader = await command.ExecuteReaderAsync())
-                    {
-                        while (await reader.ReadAsync())
-                        {
-                            sections.Add(new Section
-                            {
-                                Id = reader.GetInt32(0),
-                                ReportId = reader.GetInt32(1),
-                                Number = reader.GetInt32(2),
-                                Title = reader.IsDBNull(3) ? null : reader.GetString(3),
-                                SubSections = new ObservableCollection<SubSection>()
-                            });
-                        }
-                    }
-                }
-            }
-
-            return sections;
-        }
-        // --------------------------------------------------------------------------------
-
         // Включение внешнего ключа(не трогать)
         private void EnableForeignKeys(SQLiteConnection connection)
         {
@@ -1084,12 +831,6 @@ namespace Project_bpi.Services
             {
                 command.ExecuteNonQuery();
             }
-        }
-
-        // Закрытие соединения с бд
-        public void Dispose()
-        {
-            _connection?.Dispose();
         }
     }
 }

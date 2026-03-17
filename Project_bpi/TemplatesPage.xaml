@@ -36,52 +36,6 @@
             </Setter>
         </Style>
 
-        <!-- Стиль для кнопки Удалить -->
-        <Style x:Key="DeleteButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#FF8F1306"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="10,5"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" 
-                                Background="{TemplateBinding Background}" 
-                                CornerRadius="10"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#FFC56359"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#FFC56359"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Стиль для кнопок фильтра -->
-        <Style x:Key="FilterButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#FF225CAB"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="15,8"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-        </Style>
-
-        <!-- Стиль для RadioButton -->
-        <Style x:Key="FilterRadioButtonStyle" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="#FF004AA1"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Margin" Value="0,0,15,0"/>
-        </Style>
     </UserControl.Resources>
 
     <Grid>
@@ -90,15 +44,6 @@
         <!-- Основной контент -->
         <ScrollViewer Margin="30,30,30,30" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition/>
-                        <ColumnDefinition Width="50"/>
-                    </Grid.ColumnDefinitions>
-
-                  
-                </Grid>
-
                 <Border Background="White" CornerRadius="10" Margin="20,20,20,10" Padding="5,0,5,0">
                     <Grid Margin="10,0,0,0">
                         <Grid.ColumnDefinitions>
