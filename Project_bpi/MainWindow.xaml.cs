@@ -20,6 +20,7 @@ namespace Project_bpi
     {
         public DataBase DB = new DataBase();
         private const string TemplateDatabaseFolderName = "TemplateDatabases";
+        private const string SectionContentSubSectionTitle = "__section_content__";
 
         private readonly Dictionary<Border, Border> parents = new Dictionary<Border, Border>();
         private readonly Dictionary<Border, DynamicTemplateEntry> dynamicTemplates = new Dictionary<Border, DynamicTemplateEntry>();
@@ -47,6 +48,8 @@ namespace Project_bpi
             public DynamicTemplateEntry Template { get; set; }
             public Section Section { get; set; }
             public TextBox TitleTextBox { get; set; }
+            public TextBox ContentTextBox { get; set; }
+            public SubSection ContentSubSection { get; set; }
         }
 
         private sealed class SubSectionEditorContext
@@ -208,7 +211,8 @@ namespace Project_bpi
                 section.Report = report;
 
                 var sectionContainer = new StackPanel();
-                bool hasChildren = section.SubSections != null && section.SubSections.Any();
+                var visibleSubSections = GetVisibleSubSections(section).ToList();
+                bool hasChildren = visibleSubSections.Any();
                 var sectionHeader = CreateDynamicMenuBorder(BuildSectionTitle(section), "sub", "SubMenuStyle", hasChildren, out var sectionIndicator);
 
                 dynamicSections[sectionHeader] = section;
@@ -223,7 +227,7 @@ namespace Project_bpi
                     var sectionMenu = new StackPanel { Visibility = Visibility.Collapsed };
                     dynamicMenus[sectionHeader] = sectionMenu;
                     dynamicIndicators[sectionHeader] = sectionIndicator;
-                    AddSubSectionsToMenu(sectionMenu, entry, section, section.SubSections, sectionHeader, 0);
+                    AddSubSectionsToMenu(sectionMenu, entry, section, visibleSubSections, sectionHeader, 0);
 
                     sectionContainer.Children.Add(sectionMenu);
                 }
@@ -243,7 +247,7 @@ namespace Project_bpi
             Border parentBorder,
             int depth)
         {
-            foreach (var subsection in subSections.OrderBy(s => s.Number))
+            foreach (var subsection in subSections.Where(item => !IsSectionContentSubSection(item)).OrderBy(s => s.Number))
             {
                 subsection.Section = section;
 
@@ -889,8 +893,9 @@ namespace Project_bpi
             {
                 foreach (var section in templateEntry.Report.Sections.OrderBy(s => s.Number))
                 {
-                    var sectionLines = section.SubSections != null && section.SubSections.Any()
-                        ? BuildSubSectionOutlineLines(section, section.SubSections)
+                    var visibleSubSections = GetVisibleSubSections(section).ToList();
+                    var sectionLines = visibleSubSections.Any()
+                        ? BuildSubSectionOutlineLines(section, visibleSubSections)
                         : new[] { "Подразделы отсутствуют" };
 
                     stack.Children.Add(CreateTextCard(BuildSectionTitle(section), string.Join(Environment.NewLine, sectionLines)));
@@ -911,11 +916,18 @@ namespace Project_bpi
         private UIElement CreateSectionContent(Section section)
         {
             var templateEntry = FindTemplateEntryForSection(section);
+            var contentSubSection = GetSectionContentSubSection(section);
             var stack = CreateContentStack(BuildSectionTitle(section),
-                "Здесь можно изменить название раздела и добавить новые подразделы.");
+                "Здесь можно изменить название раздела, добавить текст, таблицы и новые подразделы.");
 
             var titleBox = CreateEditorTextBox(section.Title, false);
             stack.Children.Add(CreateContentCard("Название раздела", titleBox));
+
+            string content = contentSubSection?.Texts != null && contentSubSection.Texts.Any()
+                ? contentSubSection.Texts.First().Content
+                : string.Empty;
+            var contentBox = CreateEditorTextBox(content, true);
+            stack.Children.Add(CreateContentCard("Текст раздела", contentBox));
 
             var buttons = CreateButtonRow();
 
@@ -924,17 +936,33 @@ namespace Project_bpi
             {
                 Template = templateEntry,
                 Section = section,
-                TitleTextBox = titleBox
+                TitleTextBox = titleBox,
+                ContentTextBox = contentBox,
+                ContentSubSection = contentSubSection
             };
             saveButton.Click += SaveSectionButton_Click;
             buttons.Children.Add(saveButton);
+
+            var addTableButton = CreateSecondaryButton("Добавить таблицу");
+            addTableButton.Tag = new SectionEditorContext
+            {
+                Template = templateEntry,
+                Section = section,
+                TitleTextBox = titleBox,
+                ContentTextBox = contentBox,
+                ContentSubSection = contentSubSection
+            };
+            addTableButton.Click += AddTableButton_Click;
+            buttons.Children.Add(addTableButton);
 
             var addSubSectionButton = CreateSecondaryButton("Добавить подраздел");
             addSubSectionButton.Tag = new SectionEditorContext
             {
                 Template = templateEntry,
                 Section = section,
-                TitleTextBox = titleBox
+                TitleTextBox = titleBox,
+                ContentTextBox = contentBox,
+                ContentSubSection = contentSubSection
             };
             addSubSectionButton.Click += AddSubSectionButton_Click;
             buttons.Children.Add(addSubSectionButton);
@@ -944,18 +972,29 @@ namespace Project_bpi
             {
                 Template = templateEntry,
                 Section = section,
-                TitleTextBox = titleBox
+                TitleTextBox = titleBox,
+                ContentTextBox = contentBox,
+                ContentSubSection = contentSubSection
             };
             deleteSectionButton.Click += DeleteSectionButton_Click;
             buttons.Children.Add(deleteSectionButton);
 
             stack.Children.Add(buttons);
 
-            var subsectionLines = section.SubSections != null && section.SubSections.Any()
-                ? BuildSubSectionOutlineLines(section, section.SubSections)
+            var visibleSubSections = GetVisibleSubSections(section).ToList();
+            var subsectionLines = visibleSubSections.Any()
+                ? BuildSubSectionOutlineLines(section, visibleSubSections)
                 : new[] { "Подразделы отсутствуют" };
 
             stack.Children.Add(CreateTextCard("Подразделы", string.Join(Environment.NewLine, subsectionLines)));
+
+            if (contentSubSection?.Tables != null && contentSubSection.Tables.Any())
+            {
+                foreach (var table in contentSubSection.Tables)
+                {
+                    stack.Children.Add(CreateTableEditorCard(templateEntry, contentSubSection, table));
+                }
+            }
 
             return new ScrollViewer
             {
@@ -1269,6 +1308,24 @@ namespace Project_bpi
                 entry.Report.Sections.Any(section => ContainsSubSection(section.SubSections, subsection)));
         }
 
+        private bool IsSectionContentSubSection(SubSection subsection)
+        {
+            return subsection != null
+                && !subsection.ParentSubsectionId.HasValue
+                && string.Equals(subsection.Title, SectionContentSubSectionTitle, System.StringComparison.Ordinal);
+        }
+
+        private IEnumerable<SubSection> GetVisibleSubSections(Section section)
+        {
+            return section?.SubSections?.Where(item => !IsSectionContentSubSection(item))
+                ?? Enumerable.Empty<SubSection>();
+        }
+
+        private SubSection GetSectionContentSubSection(Section section)
+        {
+            return section?.SubSections?.FirstOrDefault(IsSectionContentSubSection);
+        }
+
         private bool ContainsSubSection(IEnumerable<SubSection> subSections, SubSection target)
         {
             if (subSections == null || target == null)
@@ -1299,7 +1356,7 @@ namespace Project_bpi
                 yield break;
             }
 
-            foreach (var subsection in subSections.OrderBy(item => item.Number))
+            foreach (var subsection in subSections.Where(item => !IsSectionContentSubSection(item)).OrderBy(item => item.Number))
             {
                 string indent = new string(' ', depth * 4);
                 yield return indent + BuildSubSectionTitle(section, subsection);
@@ -2099,7 +2156,7 @@ namespace Project_bpi
                 templateEntry = sectionContext.Template;
                 section = sectionContext.Section;
                 parentSubSection = null;
-                siblingSubSections = sectionContext.Section.SubSections ?? Enumerable.Empty<SubSection>();
+                siblingSubSections = GetVisibleSubSections(sectionContext.Section);
             }
             else if (button.Tag is SubSectionEditorContext subSectionContext)
             {
@@ -2142,6 +2199,45 @@ namespace Project_bpi
             await RefreshTemplateEntryAsync(templateEntry, subsectionId: subsectionId);
         }
 
+        private async Task<SubSection> EnsureSectionContentSubSectionAsync(DynamicTemplateEntry templateEntry, Section section)
+        {
+            var existingSubSection = GetSectionContentSubSection(section);
+            if (existingSubSection != null)
+            {
+                return existingSubSection;
+            }
+
+            var database = new DataBase(templateEntry.DatabasePath);
+            int subsectionId = await database.AddSubsection(new SubSection
+            {
+                SectionId = section.Id,
+                ParentSubsectionId = null,
+                Number = 0,
+                Title = SectionContentSubSectionTitle
+            });
+
+            var newSubSection = new SubSection
+            {
+                Id = subsectionId,
+                SectionId = section.Id,
+                ParentSubsectionId = null,
+                Number = 0,
+                Title = SectionContentSubSectionTitle,
+                Section = section,
+                SubSections = new List<SubSection>(),
+                Tables = new List<Table>(),
+                Texts = new List<Text>()
+            };
+
+            if (section.SubSections == null)
+            {
+                section.SubSections = new List<SubSection>();
+            }
+
+            section.SubSections.Add(newSubSection);
+            return newSubSection;
+        }
+
         private async void SaveSectionButton_Click(object sender, RoutedEventArgs e)
         {
             if (!(sender is Button button) || !(button.Tag is SectionEditorContext context))
@@ -2160,6 +2256,37 @@ namespace Project_bpi
             context.Section.Title = title;
             var database = new DataBase(context.Template.DatabasePath);
             await database.UpdateSection(context.Section);
+            string content = context.ContentTextBox?.Text.Trim() ?? string.Empty;
+            var contentSubSection = context.ContentSubSection;
+
+            if (!string.IsNullOrWhiteSpace(content))
+            {
+                contentSubSection = await EnsureSectionContentSubSectionAsync(context.Template, context.Section);
+                Text existingText = contentSubSection.Texts.FirstOrDefault();
+                if (existingText == null)
+                {
+                    await database.AddText(new Text
+                    {
+                        SubsectionId = contentSubSection.Id,
+                        Content = content,
+                        PatternName = "main_text"
+                    });
+                }
+                else
+                {
+                    existingText.Content = content;
+                    await database.UpdateText(existingText);
+                }
+            }
+            else if (contentSubSection != null)
+            {
+                Text existingText = contentSubSection.Texts.FirstOrDefault();
+                if (existingText != null)
+                {
+                    await database.DeleteText(existingText.Id);
+                }
+            }
+
             await RefreshTemplateEntryAsync(context.Template, sectionId: context.Section.Id);
         }
 
@@ -2371,7 +2498,7 @@ namespace Project_bpi
 
         private async void AddTableButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!(sender is Button button) || !(button.Tag is SubSectionEditorContext context))
+            if (!(sender is Button button))
             {
                 return;
             }
@@ -2389,15 +2516,45 @@ namespace Project_bpi
                 return;
             }
 
-            var database = new DataBase(context.Template.DatabasePath);
+            DynamicTemplateEntry templateEntry;
+            SubSection targetSubSection;
+            int refreshSubSectionId;
+            int? refreshSectionId = null;
+
+            if (button.Tag is SubSectionEditorContext subSectionContext)
+            {
+                templateEntry = subSectionContext.Template;
+                targetSubSection = subSectionContext.SubSection;
+                refreshSubSectionId = subSectionContext.SubSection.Id;
+            }
+            else if (button.Tag is SectionEditorContext sectionContext)
+            {
+                templateEntry = sectionContext.Template;
+                targetSubSection = await EnsureSectionContentSubSectionAsync(sectionContext.Template, sectionContext.Section);
+                refreshSubSectionId = targetSubSection.Id;
+                refreshSectionId = sectionContext.Section.Id;
+            }
+            else
+            {
+                return;
+            }
+
+            var database = new DataBase(templateEntry.DatabasePath);
             await database.AddTable(new Table
             {
                 Title = dialog.TemplateName.Trim(),
-                SubsectionId = context.SubSection.Id,
+                SubsectionId = targetSubSection.Id,
                 PatternName = $"table_{DateTime.Now.Ticks}"
             });
 
-            await RefreshTemplateEntryAsync(context.Template, subsectionId: context.SubSection.Id);
+            if (refreshSectionId.HasValue)
+            {
+                await RefreshTemplateEntryAsync(templateEntry, sectionId: refreshSectionId.Value);
+            }
+            else
+            {
+                await RefreshTemplateEntryAsync(templateEntry, subsectionId: refreshSubSectionId);
+            }
         }
 
         private async void SaveTableButton_Click(object sender, RoutedEventArgs e)
