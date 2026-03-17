@@ -1558,6 +1558,14 @@ namespace Project_bpi
                 Background = Brushes.White
             };
 
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(28) });
+            for (int rowIndex = 0; rowIndex < totalRowCount; rowIndex++)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(24) });
+
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
             for (int columnIndex = 0; columnIndex < structure.ColumnCount; columnIndex++)
             {
                 grid.ColumnDefinitions.Add(new ColumnDefinition
@@ -1565,14 +1573,12 @@ namespace Project_bpi
                     Width = new GridLength(160)
                 });
             }
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
 
-            for (int rowIndex = 0; rowIndex < totalRowCount; rowIndex++)
-            {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            }
-
-            AddEditableCellsToGrid(grid, context, structure.HeaderCells, 0);
-            AddEditableCellsToGrid(grid, context, structure.BodyCells, structure.HeaderRowCount);
+            AddColumnHandles(grid, context);
+            AddRowHandles(grid, context);
+            AddEditableCellsToGrid(grid, structure.HeaderCells, 1, 1);
+            AddEditableCellsToGrid(grid, structure.BodyCells, structure.HeaderRowCount + 1, 1);
 
             return new Border
             {
@@ -1583,13 +1589,212 @@ namespace Project_bpi
             };
         }
 
-        private void AddEditableCellsToGrid(Grid grid, TableEditorContext context, IEnumerable<TableCellDefinition> cells, int rowOffset)
+        private void AddColumnHandles(Grid grid, TableEditorContext context)
+        {
+            for (int column = 1; column <= context.Structure.ColumnCount; column++)
+            {
+                int targetColumn = column;
+                bool canDelete = context.Structure.ColumnCount > 1;
+                var handle = CreateTableEdgeHandle(
+                    plusToolTip: "Вставить столбец",
+                    minusToolTip: "Удалить столбец",
+                    onPlusClick: () =>
+                    {
+                        InsertTableColumn(context, targetColumn);
+                    },
+                    onMinusClick: canDelete
+                        ? (System.Action)(() => DeleteTableColumn(context, targetColumn))
+                        : null,
+                    isColumnHandle: true);
+
+                Grid.SetRow(handle, 0);
+                Grid.SetColumn(handle, targetColumn);
+                grid.Children.Add(handle);
+            }
+
+            var trailingHandle = CreateTableEdgeHandle(
+                plusToolTip: "Добавить столбец справа",
+                minusToolTip: null,
+                onPlusClick: () =>
+                {
+                    InsertTableColumn(context, context.Structure.ColumnCount + 1);
+                },
+                onMinusClick: null,
+                isColumnHandle: true);
+
+            Grid.SetRow(trailingHandle, 0);
+            Grid.SetColumn(trailingHandle, context.Structure.ColumnCount + 1);
+            grid.Children.Add(trailingHandle);
+        }
+
+        private void AddRowHandles(Grid grid, TableEditorContext context)
+        {
+            int totalRowCount = context.Structure.HeaderRowCount + context.Structure.BodyRowCount;
+            for (int visualRow = 1; visualRow <= totalRowCount; visualRow++)
+            {
+                int targetRow = visualRow;
+                bool isHeaderRow = targetRow <= context.Structure.HeaderRowCount;
+                bool canDelete = isHeaderRow
+                    ? context.Structure.HeaderRowCount > 1
+                    : context.Structure.BodyRowCount > 0;
+
+                var handle = CreateTableEdgeHandle(
+                    plusToolTip: "Вставить строку",
+                    minusToolTip: "Удалить строку",
+                    onPlusClick: () =>
+                    {
+                        InsertTableRow(context, targetRow);
+                    },
+                    onMinusClick: canDelete
+                        ? (System.Action)(() => DeleteTableRow(context, targetRow))
+                        : null,
+                    isColumnHandle: false);
+
+                Grid.SetRow(handle, targetRow);
+                Grid.SetColumn(handle, 0);
+                grid.Children.Add(handle);
+            }
+
+            var trailingHandle = CreateTableEdgeHandle(
+                plusToolTip: "Добавить строку снизу",
+                minusToolTip: null,
+                onPlusClick: () =>
+                {
+                    InsertTableRow(context, totalRowCount + 1);
+                },
+                onMinusClick: null,
+                isColumnHandle: false);
+
+            Grid.SetRow(trailingHandle, totalRowCount + 1);
+            Grid.SetColumn(trailingHandle, 0);
+            grid.Children.Add(trailingHandle);
+        }
+
+        private Border CreateTableEdgeHandle(string plusToolTip, string minusToolTip, System.Action onPlusClick, System.Action onMinusClick, bool isColumnHandle)
+        {
+            var buttonsPanel = new StackPanel
+            {
+                Orientation = isColumnHandle ? Orientation.Horizontal : Orientation.Vertical,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Visibility = Visibility.Collapsed
+            };
+
+            if (onPlusClick != null)
+            {
+                buttonsPanel.Children.Add(CreateTableEdgeButton(CreateTablePlusIcon(), plusToolTip, onPlusClick));
+            }
+
+            if (onMinusClick != null)
+            {
+                buttonsPanel.Children.Add(CreateTableEdgeButton(CreateTableMinusIcon(), minusToolTip, onMinusClick));
+            }
+
+            var host = new Border
+            {
+                Background = Brushes.Transparent,
+                Child = buttonsPanel
+            };
+
+            host.MouseEnter += (sender, args) =>
+            {
+                buttonsPanel.Visibility = Visibility.Visible;
+            };
+            host.MouseLeave += (sender, args) =>
+            {
+                buttonsPanel.Visibility = Visibility.Collapsed;
+            };
+
+            return host;
+        }
+
+        private Button CreateTableEdgeButton(UIElement icon, string toolTip, System.Action onClick)
+        {
+            var button = new Button
+            {
+                Width = 16,
+                Height = 16,
+                Margin = new Thickness(2),
+                Padding = new Thickness(0),
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                ToolTip = toolTip,
+                Content = icon,
+                Focusable = false
+            };
+
+            button.Click += (sender, args) => onClick();
+            return button;
+        }
+
+        private UIElement CreateTablePlusIcon()
+        {
+            var grid = new Grid
+            {
+                Width = 14,
+                Height = 14
+            };
+
+            grid.Children.Add(new System.Windows.Shapes.Ellipse
+            {
+                Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4CAF50"))
+            });
+
+            grid.Children.Add(new Border
+            {
+                Width = 8,
+                Height = 2,
+                Background = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            grid.Children.Add(new Border
+            {
+                Width = 2,
+                Height = 8,
+                Background = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            return grid;
+        }
+
+        private UIElement CreateTableMinusIcon()
+        {
+            var grid = new Grid
+            {
+                Width = 14,
+                Height = 14
+            };
+
+            grid.Children.Add(new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FF3F62")),
+                CornerRadius = new CornerRadius(3)
+            });
+
+            grid.Children.Add(new Border
+            {
+                Width = 8,
+                Height = 2,
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#830018")),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            return grid;
+        }
+
+        private void AddEditableCellsToGrid(Grid grid, IEnumerable<TableCellDefinition> cells, int rowOffset, int columnOffset)
         {
             foreach (var cell in cells.OrderBy(item => item.Row).ThenBy(item => item.Column))
             {
                 var textBox = CreateEditableTableCellTextBox(cell);
                 Grid.SetRow(textBox, rowOffset + cell.Row - 1);
-                Grid.SetColumn(textBox, cell.Column - 1);
+                Grid.SetColumn(textBox, columnOffset + cell.Column - 1);
                 Grid.SetColumnSpan(textBox, cell.ColSpan);
                 Grid.SetRowSpan(textBox, cell.RowSpan);
                 grid.Children.Add(textBox);
@@ -1633,37 +1838,7 @@ namespace Project_bpi
                 return;
             }
 
-            EnsureEditableTableStructure(context.Structure);
-            int newColumn = context.Structure.ColumnCount + 1;
-            context.Structure.ColumnCount = newColumn;
-
-            for (int row = 1; row <= context.Structure.HeaderRowCount; row++)
-            {
-                context.Structure.HeaderCells.Add(new TableCellDefinition
-                {
-                    Text = string.Empty,
-                    Row = row,
-                    Column = newColumn,
-                    ColSpan = 1,
-                    RowSpan = 1,
-                    IsHeader = true
-                });
-            }
-
-            for (int row = 1; row <= context.Structure.BodyRowCount; row++)
-            {
-                context.Structure.BodyCells.Add(new TableCellDefinition
-                {
-                    Text = string.Empty,
-                    Row = row,
-                    Column = newColumn,
-                    ColSpan = 1,
-                    RowSpan = 1,
-                    IsHeader = false
-                });
-            }
-
-            RefreshTableEditor(context);
+            InsertTableColumn(context, context.Structure.ColumnCount + 1);
         }
 
         private void AddTableRowButton_Click(object sender, RoutedEventArgs e)
@@ -1673,24 +1848,160 @@ namespace Project_bpi
                 return;
             }
 
-            EnsureEditableTableStructure(context.Structure);
-            int newRow = context.Structure.BodyRowCount + 1;
-            context.Structure.BodyRowCount = newRow;
+            InsertTableRow(context, context.Structure.HeaderRowCount + context.Structure.BodyRowCount + 1);
+        }
 
-            for (int column = 1; column <= context.Structure.ColumnCount; column++)
+        private void InsertTableColumn(TableEditorContext context, int insertAtColumn)
+        {
+            EnsureEditableTableStructure(context.Structure);
+            ShiftCellsForInsertedColumn(context.Structure.HeaderCells, insertAtColumn);
+            ShiftCellsForInsertedColumn(context.Structure.BodyCells, insertAtColumn);
+            context.Structure.ColumnCount++;
+            RefreshTableEditor(context);
+        }
+
+        private void DeleteTableColumn(TableEditorContext context, int deleteColumn)
+        {
+            EnsureEditableTableStructure(context.Structure);
+            if (context.Structure.ColumnCount <= 1)
             {
-                context.Structure.BodyCells.Add(new TableCellDefinition
-                {
-                    Text = string.Empty,
-                    Row = newRow,
-                    Column = column,
-                    ColSpan = 1,
-                    RowSpan = 1,
-                    IsHeader = false
-                });
+                return;
+            }
+
+            ShiftCellsForDeletedColumn(context.Structure.HeaderCells, deleteColumn);
+            ShiftCellsForDeletedColumn(context.Structure.BodyCells, deleteColumn);
+            context.Structure.ColumnCount--;
+            RefreshTableEditor(context);
+        }
+
+        private void InsertTableRow(TableEditorContext context, int visualRow)
+        {
+            EnsureEditableTableStructure(context.Structure);
+
+            if (visualRow <= context.Structure.HeaderRowCount)
+            {
+                ShiftCellsForInsertedRow(context.Structure.HeaderCells, visualRow);
+                context.Structure.HeaderRowCount++;
+            }
+            else
+            {
+                int bodyRow = Math.Max(1, visualRow - context.Structure.HeaderRowCount);
+                ShiftCellsForInsertedRow(context.Structure.BodyCells, bodyRow);
+                context.Structure.BodyRowCount++;
             }
 
             RefreshTableEditor(context);
+        }
+
+        private void DeleteTableRow(TableEditorContext context, int visualRow)
+        {
+            EnsureEditableTableStructure(context.Structure);
+
+            if (visualRow <= context.Structure.HeaderRowCount)
+            {
+                if (context.Structure.HeaderRowCount <= 1)
+                {
+                    return;
+                }
+
+                ShiftCellsForDeletedRow(context.Structure.HeaderCells, visualRow);
+                context.Structure.HeaderRowCount--;
+            }
+            else
+            {
+                if (context.Structure.BodyRowCount <= 0)
+                {
+                    return;
+                }
+
+                int bodyRow = visualRow - context.Structure.HeaderRowCount;
+                ShiftCellsForDeletedRow(context.Structure.BodyCells, bodyRow);
+                context.Structure.BodyRowCount--;
+            }
+
+            RefreshTableEditor(context);
+        }
+
+        private void ShiftCellsForInsertedColumn(List<TableCellDefinition> cells, int insertAtColumn)
+        {
+            foreach (var cell in cells)
+            {
+                int cellEndColumn = cell.Column + cell.ColSpan - 1;
+                if (cell.Column >= insertAtColumn)
+                {
+                    cell.Column++;
+                }
+                else if (cell.Column < insertAtColumn && cellEndColumn >= insertAtColumn)
+                {
+                    cell.ColSpan++;
+                }
+            }
+        }
+
+        private void ShiftCellsForDeletedColumn(List<TableCellDefinition> cells, int deleteColumn)
+        {
+            foreach (var cell in cells.ToList())
+            {
+                int cellEndColumn = cell.Column + cell.ColSpan - 1;
+                if (cell.Column > deleteColumn)
+                {
+                    cell.Column--;
+                    continue;
+                }
+
+                if (cell.Column <= deleteColumn && cellEndColumn >= deleteColumn)
+                {
+                    if (cell.ColSpan > 1)
+                    {
+                        cell.ColSpan--;
+                    }
+                    else
+                    {
+                        cells.Remove(cell);
+                    }
+                }
+            }
+        }
+
+        private void ShiftCellsForInsertedRow(List<TableCellDefinition> cells, int insertAtRow)
+        {
+            foreach (var cell in cells)
+            {
+                int cellEndRow = cell.Row + cell.RowSpan - 1;
+                if (cell.Row >= insertAtRow)
+                {
+                    cell.Row++;
+                }
+                else if (cell.Row < insertAtRow && cellEndRow >= insertAtRow)
+                {
+                    cell.RowSpan++;
+                }
+            }
+        }
+
+        private void ShiftCellsForDeletedRow(List<TableCellDefinition> cells, int deleteRow)
+        {
+            foreach (var cell in cells.ToList())
+            {
+                int cellEndRow = cell.Row + cell.RowSpan - 1;
+                if (cell.Row > deleteRow)
+                {
+                    cell.Row--;
+                    continue;
+                }
+
+                if (cell.Row <= deleteRow && cellEndRow >= deleteRow)
+                {
+                    if (cell.RowSpan > 1)
+                    {
+                        cell.RowSpan--;
+                    }
+                    else
+                    {
+                        cells.Remove(cell);
+                    }
+                }
+            }
         }
 
         private string FormatTableHeaders(Table table)
@@ -2112,8 +2423,7 @@ namespace Project_bpi
             EnsureEditableTableStructure(context.Structure);
             var structure = context.Structure;
 
-            foreach (var headerCell in structure.HeaderCells.Where(cell =>
-                !string.IsNullOrWhiteSpace(cell.Text) || cell.ColSpan > 1 || cell.RowSpan > 1))
+            foreach (var headerCell in structure.HeaderCells)
             {
                 await database.AddTableItem(new TableItem
                 {
@@ -2127,8 +2437,7 @@ namespace Project_bpi
                 });
             }
 
-            foreach (var bodyCell in structure.BodyCells.Where(cell =>
-                !string.IsNullOrWhiteSpace(cell.Text) || cell.ColSpan > 1 || cell.RowSpan > 1))
+            foreach (var bodyCell in structure.BodyCells)
             {
                 await database.AddTableItem(new TableItem
                 {
@@ -2416,13 +2725,16 @@ namespace Project_bpi
                 ? structure.BodyCells.Max(cell => cell.Column + cell.ColSpan - 1)
                 : 0;
 
-            structure.ColumnCount = Math.Max(headerColumnCount, bodyColumnCount);
-            structure.HeaderRowCount = structure.HeaderCells.Any()
+            int headerRowCount = structure.HeaderCells.Any()
                 ? structure.HeaderCells.Max(cell => cell.Row + cell.RowSpan - 1)
                 : 0;
-            structure.BodyRowCount = structure.BodyCells.Any()
+            int bodyRowCount = structure.BodyCells.Any()
                 ? structure.BodyCells.Max(cell => cell.Row + cell.RowSpan - 1)
-                : structure.BodyRowCount;
+                : 0;
+
+            structure.ColumnCount = Math.Max(structure.ColumnCount, Math.Max(headerColumnCount, bodyColumnCount));
+            structure.HeaderRowCount = Math.Max(structure.HeaderRowCount, headerRowCount);
+            structure.BodyRowCount = Math.Max(structure.BodyRowCount, bodyRowCount);
 
             return structure;
         }
