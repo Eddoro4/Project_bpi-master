@@ -50,6 +50,7 @@ namespace Project_bpi
             public TextBox TitleTextBox { get; set; }
             public TextBox ContentTextBox { get; set; }
             public SubSection ContentSubSection { get; set; }
+            public List<TableEditorContext> TableEditors { get; } = new List<TableEditorContext>();
         }
 
         private sealed class SubSectionEditorContext
@@ -58,6 +59,7 @@ namespace Project_bpi
             public SubSection SubSection { get; set; }
             public TextBox TitleTextBox { get; set; }
             public TextBox ContentTextBox { get; set; }
+            public List<TableEditorContext> TableEditors { get; } = new List<TableEditorContext>();
         }
 
         private sealed class TableEditorContext
@@ -213,7 +215,7 @@ namespace Project_bpi
                 var sectionContainer = new StackPanel();
                 var visibleSubSections = GetVisibleSubSections(section).ToList();
                 bool hasChildren = visibleSubSections.Any();
-                var sectionHeader = CreateDynamicMenuBorder(BuildSectionTitle(section), "sub", "SubMenuStyle", hasChildren, out var sectionIndicator);
+                var sectionHeader = CreateDynamicMenuBorder(BuildSectionMenuTitle(section), "sub", "SubMenuStyle", hasChildren, out var sectionIndicator);
 
                 dynamicSections[sectionHeader] = section;
                 parents[sectionHeader] = templateHeader;
@@ -269,7 +271,7 @@ namespace Project_bpi
 
                 if (depth > 0)
                 {
-                    subsectionContainer.Margin = new Thickness(depth * 12, 0, 0, 0);
+                    subsectionHeader.Padding = new Thickness(12 + depth * 12, 6, 12, 6);
                 }
 
                 subsectionContainer.Children.Add(subsectionHeader);
@@ -412,7 +414,11 @@ namespace Project_bpi
             }
         }
 
-        private async Task RefreshTemplateEntryAsync(DynamicTemplateEntry entry, int? sectionId = null, int? subsectionId = null)
+        private async Task RefreshTemplateEntryAsync(
+            DynamicTemplateEntry entry,
+            int? sectionId = null,
+            int? subsectionId = null,
+            bool editMode = true)
         {
             var database = new DataBase(entry.DatabasePath);
             database.InitializeDatabase(false);
@@ -448,7 +454,7 @@ namespace Project_bpi
 
             if (selectedBorder != null)
             {
-                ActivateMenuItem(selectedBorder, true, true);
+                ActivateMenuItem(selectedBorder, true, editMode);
             }
         }
 
@@ -745,7 +751,7 @@ namespace Project_bpi
                     ToggleDynamicMenu(border);
                 }
 
-                ActivateMenuItem(border, false);
+                ActivateMenuItem(border, true, false);
             }
         }
 
@@ -790,28 +796,49 @@ namespace Project_bpi
         {
             return new Image
             {
-                Source = new BitmapImage(new Uri("pack://application:,,,/images/arrow.jpg", UriKind.Absolute)),
-                Width = 12,
-                Height = 12,
-                Margin = new Thickness(6, 2, 0, 0)
+                Source = (ImageSource)FindResource("ArrowChevronBlueIcon"),
+                Style = (Style)FindResource("ArrowIndicatorStyle")
             };
         }
 
         private void ApplyDynamicIndicatorState(Image indicator, bool isExpanded)
         {
-            indicator.LayoutTransform = isExpanded
-                ? (Transform)new RotateTransform(90)
-                : null;
+            ApplyIndicatorVisual(indicator, isExpanded, false);
+        }
+
+        private void ApplyIndicatorVisual(Image indicator, bool isExpanded, bool isActive)
+        {
+            if (indicator == null)
+            {
+                return;
+            }
+
+            indicator.Source = (ImageSource)FindResource(isActive ? "ArrowChevronWhiteIcon" : "ArrowChevronBlueIcon");
+            indicator.RenderTransform = isExpanded
+                ? (Transform)new RotateTransform(-90)
+                : Transform.Identity;
         }
 
         private string BuildSectionTitle(Section section)
         {
+            string defaultTitle = GetDefaultSectionTitle(section?.Number ?? 0);
+
             if (string.IsNullOrWhiteSpace(section.Title))
             {
-                return $"Раздел {section.Number}";
+                return defaultTitle;
+            }
+
+            if (string.Equals(section.Title.Trim(), defaultTitle, StringComparison.Ordinal))
+            {
+                return defaultTitle;
             }
 
             return $"Раздел {section.Number}. {section.Title}";
+        }
+
+        private string BuildSectionMenuTitle(Section section)
+        {
+            return GetDefaultSectionTitle(section?.Number ?? 0);
         }
 
         private string BuildSubSectionTitle(Section section, SubSection subsection)
@@ -833,20 +860,26 @@ namespace Project_bpi
                     return false;
                 }
 
-                MainContentControl.Content = CreateTemplateContent(templateEntry);
-                currentDynamicEditorBorder = menuItem;
+                MainContentControl.Content = editMode
+                    ? CreateTemplateContent(templateEntry)
+                    : CreateTemplatePreviewContent(templateEntry);
+                currentDynamicEditorBorder = editMode ? menuItem : null;
                 return true;
             }
 
             if (dynamicSections.TryGetValue(menuItem, out var section))
             {
-                if (!editMode)
+                if (!editMode && !HasSectionDisplayContent(section))
                 {
-                    return false;
+                    MainContentControl.Content = null;
+                    currentDynamicEditorBorder = null;
+                    return true;
                 }
 
-                MainContentControl.Content = CreateSectionContent(section);
-                currentDynamicEditorBorder = menuItem;
+                MainContentControl.Content = editMode
+                    ? CreateSectionContent(section)
+                    : CreateSectionPreviewContent(section);
+                currentDynamicEditorBorder = editMode ? menuItem : null;
                 return true;
             }
 
@@ -862,13 +895,45 @@ namespace Project_bpi
             return false;
         }
 
+        private UIElement CreateTemplatePreviewContent(DynamicTemplateEntry templateEntry)
+        {
+            var stack = CreateContentStack(templateEntry.DisplayTitle, GetTemplateStorageDescription(templateEntry));
+
+            string sectionSummary = templateEntry.Report.Sections.Any()
+                ? string.Join(Environment.NewLine, templateEntry.Report.Sections
+                    .OrderBy(section => section.Number)
+                    .Select(BuildSectionTitle))
+                : "Разделы еще не созданы.";
+
+            stack.Children.Add(CreateTextCard("Разделы шаблона", sectionSummary));
+
+            if (templateEntry.Report.Sections.Any())
+            {
+                foreach (var section in templateEntry.Report.Sections.OrderBy(section => section.Number))
+                {
+                    var visibleSubSections = GetVisibleSubSections(section).ToList();
+                    string sectionText = GetSectionDisplayContent(section);
+                    string subSectionSummary = visibleSubSections.Any()
+                        ? string.Join(Environment.NewLine, BuildSubSectionOutlineLines(section, visibleSubSections))
+                        : "Подразделы отсутствуют.";
+
+                    stack.Children.Add(CreateTextCard(
+                        BuildSectionTitle(section),
+                        $"{sectionText}{Environment.NewLine}{Environment.NewLine}Подразделы:{Environment.NewLine}{subSectionSummary}"));
+                }
+            }
+
+            return new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = stack
+            };
+        }
+
         private UIElement CreateTemplateContent(DynamicTemplateEntry templateEntry)
         {
-            string storageDescription = IsSharedTemplateDatabase(templateEntry.DatabasePath)
-                ? $"Общая база шаблонов: {templateEntry.DatabasePath}"
-                : $"База шаблона: {templateEntry.DatabasePath}";
             var stack = CreateContentStack(templateEntry.DisplayTitle,
-                storageDescription);
+                GetTemplateStorageDescription(templateEntry));
 
             var templateButtons = CreateButtonRow();
 
@@ -913,88 +978,91 @@ namespace Project_bpi
             };
         }
 
+        private UIElement CreateSectionPreviewContent(Section section)
+        {
+            var contentSubSection = GetSectionContentSubSection(section);
+            string sectionText = GetSectionRawContent(section);
+            string sectionTitle = GetSectionContentTitle(section);
+            var stack = new StackPanel
+            {
+                Margin = new Thickness(20)
+            };
+
+            if (!string.IsNullOrWhiteSpace(sectionTitle))
+            {
+                stack.Children.Add(CreateSectionPreviewHeader(sectionTitle));
+            }
+
+            if (!string.IsNullOrWhiteSpace(sectionText))
+            {
+                stack.Children.Add(CreateSubSectionPreviewBody(sectionText));
+            }
+
+            if (contentSubSection?.Tables != null && contentSubSection.Tables.Any())
+            {
+                foreach (var table in contentSubSection.Tables.OrderBy(table => table.Id))
+                {
+                    stack.Children.Add(CreateSubSectionPreviewTableCard(table));
+                }
+            }
+
+            return new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = stack
+            };
+        }
+
         private UIElement CreateSectionContent(Section section)
         {
             var templateEntry = FindTemplateEntryForSection(section);
             var contentSubSection = GetSectionContentSubSection(section);
-            var stack = CreateContentStack(BuildSectionTitle(section),
+            var editorContext = new SectionEditorContext
+            {
+                Template = templateEntry,
+                Section = section,
+                ContentSubSection = contentSubSection
+            };
+            var stack = CreateContentStack(GetSectionContentTitle(section),
                 "Здесь можно изменить название раздела, добавить текст, таблицы и новые подразделы.");
 
             var titleBox = CreateEditorTextBox(section.Title, false);
+            editorContext.TitleTextBox = titleBox;
             stack.Children.Add(CreateContentCard("Название раздела", titleBox));
 
             string content = contentSubSection?.Texts != null && contentSubSection.Texts.Any()
                 ? contentSubSection.Texts.First().Content
                 : string.Empty;
             var contentBox = CreateEditorTextBox(content, true);
+            editorContext.ContentTextBox = contentBox;
             stack.Children.Add(CreateContentCard("Текст раздела", contentBox));
-
-            var buttons = CreateButtonRow();
-
-            var saveButton = CreateActionButton("Сохранить раздел");
-            saveButton.Tag = new SectionEditorContext
-            {
-                Template = templateEntry,
-                Section = section,
-                TitleTextBox = titleBox,
-                ContentTextBox = contentBox,
-                ContentSubSection = contentSubSection
-            };
-            saveButton.Click += SaveSectionButton_Click;
-            buttons.Children.Add(saveButton);
-
-            var addTableButton = CreateSecondaryButton("Добавить таблицу");
-            addTableButton.Tag = new SectionEditorContext
-            {
-                Template = templateEntry,
-                Section = section,
-                TitleTextBox = titleBox,
-                ContentTextBox = contentBox,
-                ContentSubSection = contentSubSection
-            };
-            addTableButton.Click += AddTableButton_Click;
-            buttons.Children.Add(addTableButton);
-
-            var addSubSectionButton = CreateSecondaryButton("Добавить подраздел");
-            addSubSectionButton.Tag = new SectionEditorContext
-            {
-                Template = templateEntry,
-                Section = section,
-                TitleTextBox = titleBox,
-                ContentTextBox = contentBox,
-                ContentSubSection = contentSubSection
-            };
-            addSubSectionButton.Click += AddSubSectionButton_Click;
-            buttons.Children.Add(addSubSectionButton);
-
-            var deleteSectionButton = CreateDangerButton("Удалить раздел");
-            deleteSectionButton.Tag = new SectionEditorContext
-            {
-                Template = templateEntry,
-                Section = section,
-                TitleTextBox = titleBox,
-                ContentTextBox = contentBox,
-                ContentSubSection = contentSubSection
-            };
-            deleteSectionButton.Click += DeleteSectionButton_Click;
-            buttons.Children.Add(deleteSectionButton);
-
-            stack.Children.Add(buttons);
-
-            var visibleSubSections = GetVisibleSubSections(section).ToList();
-            var subsectionLines = visibleSubSections.Any()
-                ? BuildSubSectionOutlineLines(section, visibleSubSections)
-                : new[] { "Подразделы отсутствуют" };
-
-            stack.Children.Add(CreateTextCard("Подразделы", string.Join(Environment.NewLine, subsectionLines)));
 
             if (contentSubSection?.Tables != null && contentSubSection.Tables.Any())
             {
                 foreach (var table in contentSubSection.Tables)
                 {
-                    stack.Children.Add(CreateTableEditorCard(templateEntry, contentSubSection, table));
+                    stack.Children.Add(CreateTableEditorCard(templateEntry, contentSubSection, table, editorContext.TableEditors));
                 }
             }
+
+            var buttons = CreateButtonRow();
+
+            var saveButton = CreateActionButton("Сохранить");
+            saveButton.Tag = editorContext;
+            saveButton.Click += SaveSectionButton_Click;
+            buttons.Children.Add(saveButton);
+
+            var addTableButton = CreateSecondaryButton("Добавить таблицу");
+            addTableButton.Tag = editorContext;
+            addTableButton.Click += AddTableButton_Click;
+            buttons.Children.Add(addTableButton);
+
+            var addSubSectionButton = CreateSecondaryButton("Добавить подраздел");
+            addSubSectionButton.Tag = editorContext;
+            addSubSectionButton.Click += AddSubSectionButton_Click;
+            buttons.Children.Add(addSubSectionButton);
+
+            stack.Children.Add(buttons);
 
             return new ScrollViewer
             {
@@ -1010,10 +1078,17 @@ namespace Project_bpi
             string storageDescription = templateEntry != null && IsSharedTemplateDatabase(templateEntry.DatabasePath)
                 ? "Изменения сохраняются в общую базу данных Kurs.db."
                 : "Изменения сохраняются в отдельную базу данных шаблона.";
+            bool canAddNestedSubSection = !subsection.ParentSubsectionId.HasValue;
+            var editorContext = new SubSectionEditorContext
+            {
+                Template = templateEntry,
+                SubSection = subsection
+            };
             var stack = CreateContentStack(title,
                 storageDescription);
 
             var titleBox = CreateEditorTextBox(subsection.Title, false);
+            editorContext.TitleTextBox = titleBox;
             stack.Children.Add(CreateContentCard("Название подраздела", titleBox));
 
             string content = subsection.Texts != null && subsection.Texts.Any()
@@ -1021,67 +1096,37 @@ namespace Project_bpi
                 : string.Empty;
 
             var contentBox = CreateEditorTextBox(content, true);
+            editorContext.ContentTextBox = contentBox;
             stack.Children.Add(CreateContentCard("Текст подраздела", contentBox));
-
-            var saveButton = CreateActionButton("Сохранить подраздел");
-            saveButton.Tag = new SubSectionEditorContext
-            {
-                Template = templateEntry,
-                SubSection = subsection,
-                TitleTextBox = titleBox,
-                ContentTextBox = contentBox
-            };
-            saveButton.Click += SaveSubSectionButton_Click;
-            var subsectionButtons = CreateButtonRow();
-            subsectionButtons.Children.Add(saveButton);
-
-            var addTableButton = CreateSecondaryButton("Добавить таблицу");
-            addTableButton.Tag = new SubSectionEditorContext
-            {
-                Template = templateEntry,
-                SubSection = subsection,
-                TitleTextBox = titleBox,
-                ContentTextBox = contentBox
-            };
-            addTableButton.Click += AddTableButton_Click;
-            subsectionButtons.Children.Add(addTableButton);
-
-            var addNestedSubSectionButton = CreateSecondaryButton("Добавить вложенный подраздел");
-            addNestedSubSectionButton.Tag = new SubSectionEditorContext
-            {
-                Template = templateEntry,
-                SubSection = subsection,
-                TitleTextBox = titleBox,
-                ContentTextBox = contentBox
-            };
-            addNestedSubSectionButton.Click += AddSubSectionButton_Click;
-            subsectionButtons.Children.Add(addNestedSubSectionButton);
-
-            var deleteSubSectionButton = CreateDangerButton("Удалить подраздел");
-            deleteSubSectionButton.Tag = new SubSectionEditorContext
-            {
-                Template = templateEntry,
-                SubSection = subsection,
-                TitleTextBox = titleBox,
-                ContentTextBox = contentBox
-            };
-            deleteSubSectionButton.Click += DeleteSubSectionButton_Click;
-            subsectionButtons.Children.Add(deleteSubSectionButton);
-
-            stack.Children.Add(subsectionButtons);
-
-            var childLines = subsection.SubSections != null && subsection.SubSections.Any()
-                ? BuildSubSectionOutlineLines(subsection.Section, subsection.SubSections)
-                : new[] { "Вложенные подразделы отсутствуют" };
-            stack.Children.Add(CreateTextCard("Вложенные подразделы", string.Join(Environment.NewLine, childLines)));
 
             if (subsection.Tables != null && subsection.Tables.Any())
             {
                 foreach (var table in subsection.Tables)
                 {
-                    stack.Children.Add(CreateTableEditorCard(templateEntry, subsection, table));
+                    stack.Children.Add(CreateTableEditorCard(templateEntry, subsection, table, editorContext.TableEditors));
                 }
             }
+
+            var saveButton = CreateActionButton("Сохранить");
+            saveButton.Tag = editorContext;
+            saveButton.Click += SaveSubSectionButton_Click;
+            var subsectionButtons = CreateButtonRow();
+            subsectionButtons.Children.Add(saveButton);
+
+            var addTableButton = CreateSecondaryButton("Добавить таблицу");
+            addTableButton.Tag = editorContext;
+            addTableButton.Click += AddTableButton_Click;
+            subsectionButtons.Children.Add(addTableButton);
+
+            if (canAddNestedSubSection)
+            {
+                var addNestedSubSectionButton = CreateSecondaryButton("Добавить вложенный подраздел");
+                addNestedSubSectionButton.Tag = editorContext;
+                addNestedSubSectionButton.Click += AddSubSectionButton_Click;
+                subsectionButtons.Children.Add(addNestedSubSectionButton);
+            }
+
+            stack.Children.Add(subsectionButtons);
 
             return new ScrollViewer
             {
@@ -1093,8 +1138,8 @@ namespace Project_bpi
         private UIElement CreateSubSectionPreviewContent(SubSection subsection)
         {
             string sectionTitle = subsection.Section != null
-                ? BuildPreviewSectionTitle(subsection.Section)
-                : "Раздел";
+                ? GetSectionContentTitle(subsection.Section)
+                : string.Empty;
             string subSectionTitle = BuildSubSectionTitle(subsection.Section, subsection);
             string content = subsection.Texts != null && subsection.Texts.Any()
                 ? subsection.Texts.First().Content
@@ -1107,11 +1152,6 @@ namespace Project_bpi
 
             stack.Children.Add(CreateSubSectionPreviewHeader(sectionTitle, subSectionTitle));
             stack.Children.Add(CreateSubSectionPreviewBody(content));
-
-            var childLines = subsection.SubSections != null && subsection.SubSections.Any()
-                ? BuildSubSectionOutlineLines(subsection.Section, subsection.SubSections)
-                : new[] { "Вложенные подразделы отсутствуют." };
-            stack.Children.Add(CreateTextCard("Вложенные подразделы", string.Join(Environment.NewLine, childLines)));
 
             if (subsection.Tables != null && subsection.Tables.Any())
             {
@@ -1128,19 +1168,22 @@ namespace Project_bpi
             };
         }
 
-        private string BuildPreviewSectionTitle(Section section)
+        private string GetDefaultSectionTitle(int number)
         {
-            if (section == null)
+            return $"Раздел {number}";
+        }
+
+        private string GetSectionContentTitle(Section section)
+        {
+            if (section == null || string.IsNullOrWhiteSpace(section.Title))
             {
                 return string.Empty;
             }
 
-            if (string.IsNullOrWhiteSpace(section.Title))
-            {
-                return $"Раздел {section.Number}";
-            }
-
-            return $"{section.Number} {section.Title}";
+            string title = section.Title.Trim();
+            return string.Equals(title, GetDefaultSectionTitle(section.Number), StringComparison.Ordinal)
+                ? string.Empty
+                : $"{section.Number} {title}";
         }
 
         private Border CreateSubSectionPreviewHeader(string sectionTitle, string subSectionTitle)
@@ -1150,16 +1193,19 @@ namespace Project_bpi
                 HorizontalAlignment = HorizontalAlignment.Center
             };
 
-            panel.Children.Add(new TextBlock
+            if (!string.IsNullOrWhiteSpace(sectionTitle))
             {
-                Text = sectionTitle,
-                FontSize = 14,
-                FontWeight = FontWeights.Bold,
-                Foreground = Brushes.White,
-                TextAlignment = TextAlignment.Center,
-                Margin = new Thickness(0, 0, 0, 10),
-                TextWrapping = TextWrapping.Wrap
-            });
+                panel.Children.Add(new TextBlock
+                {
+                    Text = sectionTitle,
+                    FontSize = 14,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = Brushes.White,
+                    TextAlignment = TextAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 10),
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
 
             panel.Children.Add(new TextBlock
             {
@@ -1178,6 +1224,43 @@ namespace Project_bpi
                 Margin = new Thickness(10),
                 Padding = new Thickness(15),
                 Height = 80,
+                Background = new LinearGradientBrush
+                {
+                    StartPoint = new Point(0, 0),
+                    EndPoint = new Point(1, 1),
+                    GradientStops = new GradientStopCollection
+                    {
+                        new GradientStop((Color)ColorConverter.ConvertFromString("#5394ba"), 0),
+                        new GradientStop((Color)ColorConverter.ConvertFromString("#0167a4"), 1)
+                    }
+                },
+                Child = panel
+            };
+        }
+
+        private Border CreateSectionPreviewHeader(string sectionTitle)
+        {
+            var panel = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = sectionTitle,
+                FontSize = 14,
+                FontWeight = FontWeights.Bold,
+                Foreground = Brushes.White,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            return new Border
+            {
+                CornerRadius = new CornerRadius(35),
+                Margin = new Thickness(10),
+                Padding = new Thickness(15),
+                MinHeight = 80,
                 Background = new LinearGradientBrush
                 {
                     StartPoint = new Point(0, 0),
@@ -1264,19 +1347,22 @@ namespace Project_bpi
                 Margin = new Thickness(24)
             };
 
-            stack.Children.Add(new TextBlock
+            if (!string.IsNullOrWhiteSpace(title))
             {
-                Text = title,
-                FontSize = 22,
-                FontWeight = FontWeights.Bold,
-                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0167a4")),
-                TextWrapping = TextWrapping.Wrap
-            });
+                stack.Children.Add(new TextBlock
+                {
+                    Text = title,
+                    FontSize = 22,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0167a4")),
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
 
             stack.Children.Add(new TextBlock
             {
                 Text = subtitle,
-                Margin = new Thickness(0, 8, 0, 18),
+                Margin = new Thickness(0, string.IsNullOrWhiteSpace(title) ? 0 : 8, 0, 18),
                 Foreground = Brushes.DimGray,
                 TextWrapping = TextWrapping.Wrap
             });
@@ -1438,7 +1524,11 @@ namespace Project_bpi
             };
         }
 
-        private Border CreateTableEditorCard(DynamicTemplateEntry templateEntry, SubSection subsection, Table table)
+        private Border CreateTableEditorCard(
+            DynamicTemplateEntry templateEntry,
+            SubSection subsection,
+            Table table,
+            ICollection<TableEditorContext> tableEditors = null)
         {
             var titleBox = CreateEditorTextBox(table.Title, false);
             var structure = CreateEditableTableStructure(table);
@@ -1453,6 +1543,7 @@ namespace Project_bpi
                 Structure = structure,
                 TableEditorHost = editorHost
             };
+            tableEditors?.Add(context);
 
             var panel = new StackPanel();
             panel.Children.Add(new TextBlock
@@ -1507,11 +1598,6 @@ namespace Project_bpi
             RefreshTableEditor(context);
 
             var buttons = CreateButtonRow();
-            var saveButton = CreateActionButton("Сохранить таблицу");
-            saveButton.Tag = context;
-            saveButton.Click += SaveTableButton_Click;
-            buttons.Children.Add(saveButton);
-
             var deleteButton = CreateDangerButton("Удалить таблицу");
             deleteButton.Tag = context;
             deleteButton.Click += DeleteTableButton_Click;
@@ -1644,6 +1730,37 @@ namespace Project_bpi
                 Background = Brushes.White,
                 Child = grid
             };
+        }
+
+        private string GetTemplateStorageDescription(DynamicTemplateEntry templateEntry)
+        {
+            return IsSharedTemplateDatabase(templateEntry.DatabasePath)
+                ? $"Общая база шаблонов: {templateEntry.DatabasePath}"
+                : $"База шаблона: {templateEntry.DatabasePath}";
+        }
+
+        private string GetSectionDisplayContent(Section section)
+        {
+            string content = GetSectionRawContent(section);
+            return !string.IsNullOrWhiteSpace(content)
+                ? content
+                : "Текст раздела пока не заполнен.";
+        }
+
+        private string GetSectionRawContent(Section section)
+        {
+            var contentSubSection = GetSectionContentSubSection(section);
+            return contentSubSection?.Texts != null && contentSubSection.Texts.Any()
+                ? contentSubSection.Texts.First().Content
+                : string.Empty;
+        }
+
+        private bool HasSectionDisplayContent(Section section)
+        {
+            var contentSubSection = GetSectionContentSubSection(section);
+            bool hasText = !string.IsNullOrWhiteSpace(GetSectionRawContent(section));
+            bool hasTables = contentSubSection?.Tables != null && contentSubSection.Tables.Any();
+            return hasText || hasTables;
         }
 
         private void AddColumnHandles(Grid grid, TableEditorContext context)
@@ -2111,19 +2228,6 @@ namespace Project_bpi
                 return;
             }
 
-            var dialog = new TemplateNameDialog
-            {
-                Owner = this,
-                Title = "Новый раздел",
-                Prompt = "Введите название раздела",
-                Label = "Название раздела"
-            };
-
-            if (dialog.ShowDialog() != true)
-            {
-                return;
-            }
-
             var database = new DataBase(templateEntry.DatabasePath);
             int nextNumber = templateEntry.Report.Sections.Any()
                 ? templateEntry.Report.Sections.Max(item => item.Number) + 1
@@ -2133,7 +2237,7 @@ namespace Project_bpi
             {
                 ReportId = templateEntry.ReportId,
                 Number = nextNumber,
-                Title = dialog.TemplateName.Trim()
+                Title = GetDefaultSectionTitle(nextNumber)
             });
 
             await RefreshTemplateEntryAsync(templateEntry, sectionId: sectionId);
@@ -2163,6 +2267,17 @@ namespace Project_bpi
                 templateEntry = subSectionContext.Template;
                 section = subSectionContext.SubSection.Section;
                 parentSubSection = subSectionContext.SubSection;
+
+                if (parentSubSection.ParentSubsectionId.HasValue)
+                {
+                    MessageBox.Show(
+                        "Во вложенном подразделе нельзя создавать дополнительные вложенные подразделы.",
+                        "Подраздел",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+
                 siblingSubSections = subSectionContext.SubSection.SubSections ?? Enumerable.Empty<SubSection>();
             }
             else
@@ -2253,6 +2368,14 @@ namespace Project_bpi
                 return;
             }
 
+            foreach (var tableContext in context.TableEditors)
+            {
+                if (!await SaveTableAsync(tableContext, false))
+                {
+                    return;
+                }
+            }
+
             context.Section.Title = title;
             var database = new DataBase(context.Template.DatabasePath);
             await database.UpdateSection(context.Section);
@@ -2287,7 +2410,7 @@ namespace Project_bpi
                 }
             }
 
-            await RefreshTemplateEntryAsync(context.Template, sectionId: context.Section.Id);
+            await RefreshTemplateEntryAsync(context.Template, sectionId: context.Section.Id, editMode: false);
         }
 
         private async void SaveSubSectionButton_Click(object sender, RoutedEventArgs e)
@@ -2303,6 +2426,14 @@ namespace Project_bpi
                 MessageBox.Show("Название подраздела не может быть пустым.", "Подраздел",
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
+            }
+
+            foreach (var tableContext in context.TableEditors)
+            {
+                if (!await SaveTableAsync(tableContext, false))
+                {
+                    return;
+                }
             }
 
             string content = context.ContentTextBox.Text.Trim();
@@ -2334,7 +2465,7 @@ namespace Project_bpi
                 await database.UpdateText(existingText);
             }
 
-            await RefreshTemplateEntryAsync(context.Template, subsectionId: context.SubSection.Id);
+            await RefreshTemplateEntryAsync(context.Template, subsectionId: context.SubSection.Id, editMode: false);
         }
 
         private async void RenameTemplateButton_Click(object sender, RoutedEventArgs e)
@@ -2564,12 +2695,30 @@ namespace Project_bpi
                 return;
             }
 
+            await SaveTableAsync(context, true);
+        }
+
+        private async Task<bool> SaveTableAsync(TableEditorContext context, bool refreshAfterSave)
+        {
+            if (context == null)
+            {
+                return false;
+            }
+
             string title = context.TitleTextBox.Text.Trim();
             if (string.IsNullOrWhiteSpace(title))
             {
                 MessageBox.Show("Название таблицы не может быть пустым.", "Таблица",
                     MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
+                return false;
+            }
+
+            EnsureEditableTableStructure(context.Structure);
+            if (!HasTableContent(context.Structure))
+            {
+                MessageBox.Show("Таблица не может быть пустой. Заполните хотя бы одну ячейку.", "Таблица",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return false;
             }
 
             var database = new DataBase(context.Template.DatabasePath);
@@ -2577,7 +2726,6 @@ namespace Project_bpi
             await database.UpdateTable(context.Table);
             await database.DeleteAllTableItems(context.Table.Id);
 
-            EnsureEditableTableStructure(context.Structure);
             var structure = context.Structure;
 
             foreach (var headerCell in structure.HeaderCells)
@@ -2608,7 +2756,23 @@ namespace Project_bpi
                 });
             }
 
-            await RefreshTemplateEntryAsync(context.Template, subsectionId: context.SubSection.Id);
+            if (refreshAfterSave)
+            {
+                await RefreshTemplateEntryAsync(context.Template, subsectionId: context.SubSection.Id);
+            }
+
+            return true;
+        }
+
+        private bool HasTableContent(TableStructure structure)
+        {
+            if (structure == null)
+            {
+                return false;
+            }
+
+            return structure.HeaderCells.Any(cell => !string.IsNullOrWhiteSpace(cell.Text))
+                || structure.BodyCells.Any(cell => !string.IsNullOrWhiteSpace(cell.Text));
         }
 
         private void MergeTableCellsButton_Click(object sender, RoutedEventArgs e)
@@ -3815,12 +3979,12 @@ namespace Project_bpi
             if (menu.Visibility == Visibility.Visible)
             {
                 menu.Visibility = Visibility.Collapsed;
-                arrow.LayoutTransform = null;
+                ApplyIndicatorVisual(arrow, false, false);
             }
             else
             {
                 menu.Visibility = Visibility.Visible;
-                arrow.LayoutTransform = new RotateTransform(90);
+                ApplyIndicatorVisual(arrow, true, false);
             }
         }
 
@@ -4177,20 +4341,21 @@ namespace Project_bpi
 
         private void UpdateArrows()
         {
-            NIR_Arrow.Visibility = IsMenuItemActive(NIR_Header) ? Visibility.Collapsed : Visibility.Visible;
-            NIR_Arrow1.Visibility = IsMenuItemActive(Section1_Header) ? Visibility.Collapsed : Visibility.Visible;
-            NIR_Arrow2.Visibility = IsMenuItemActive(Section2_Header) ? Visibility.Collapsed : Visibility.Visible;
-            NIR_Arrow3.Visibility = IsMenuItemActive(Section3_Header) ? Visibility.Collapsed : Visibility.Visible;
-            NIR_Arrow4.Visibility = IsMenuItemActive(Section4_Header) ? Visibility.Collapsed : Visibility.Visible;
-            NIR_Arrow5.Visibility = IsMenuItemActive(Section5_Header) ? Visibility.Collapsed : Visibility.Visible;
-            NIR_Arrow51.Visibility = IsMenuItemActive(Item_51) ? Visibility.Collapsed : Visibility.Visible;
-            NIR_Arrow53.Visibility = IsMenuItemActive(Item_53) ? Visibility.Collapsed : Visibility.Visible;
-            Study_Arrow.Visibility = IsMenuItemActive(Study_Header) ? Visibility.Collapsed : Visibility.Visible;
-            Study_Arrow14.Visibility = IsMenuItemActive(Section14_Header) ? Visibility.Collapsed : Visibility.Visible;
+            ApplyIndicatorVisual(NIR_Arrow, NIR_Menu.Visibility == Visibility.Visible, IsMenuItemActive(NIR_Header));
+            ApplyIndicatorVisual(NIR_Arrow1, Section1_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section1_Header));
+            ApplyIndicatorVisual(NIR_Arrow2, Section2_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section2_Header));
+            ApplyIndicatorVisual(NIR_Arrow3, Section3_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section3_Header));
+            ApplyIndicatorVisual(NIR_Arrow4, Section4_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section4_Header));
+            ApplyIndicatorVisual(NIR_Arrow5, Section5_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section5_Header));
+            ApplyIndicatorVisual(NIR_Arrow51, Item_51_SubMenu.Visibility == Visibility.Visible, IsMenuItemActive(Item_51));
+            ApplyIndicatorVisual(NIR_Arrow53, Item_53_SubMenu.Visibility == Visibility.Visible, IsMenuItemActive(Item_53));
+            ApplyIndicatorVisual(Study_Arrow, Study_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Study_Header));
+            ApplyIndicatorVisual(Study_Arrow14, Section14_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section14_Header));
 
             foreach (var pair in dynamicIndicators)
             {
-                pair.Value.Visibility = IsMenuItemActive(pair.Key) ? Visibility.Collapsed : Visibility.Visible;
+                bool isExpanded = dynamicMenus.TryGetValue(pair.Key, out var menu) && menu.Visibility == Visibility.Visible;
+                ApplyIndicatorVisual(pair.Value, isExpanded, IsMenuItemActive(pair.Key));
             }
         }
 

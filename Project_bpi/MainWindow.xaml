@@ -209,6 +209,27 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <DrawingImage x:Key="ArrowChevronBlueIcon">
+            <DrawingImage.Drawing>
+                <GeometryDrawing Brush="#0167a4" Geometry="F1 M 29.6,4.6L 11.6,22.6L 10.2,24L 11.6,25.4L 29.6,43.4L 32.5,40.5L 15.9,24L 32.4,7.4L 29.6,4.6 Z"/>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <DrawingImage x:Key="ArrowChevronWhiteIcon">
+            <DrawingImage.Drawing>
+                <GeometryDrawing Brush="#FFFFFF" Geometry="F1 M 29.6,4.6L 11.6,22.6L 10.2,24L 11.6,25.4L 29.6,43.4L 32.5,40.5L 15.9,24L 32.4,7.4L 29.6,4.6 Z"/>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <Style x:Key="ArrowIndicatorStyle" TargetType="Image">
+            <Setter Property="Width" Value="11.2"/>
+            <Setter Property="Height" Value="11.2"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+        </Style>
+
         <!-- Стили остаются без изменений -->
         <Style x:Key="MenuHeaderStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="14"/>
@@ -437,7 +458,7 @@
                                         Style="{StaticResource MenuItemStyle}">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="Отчет по НИР" Style="{StaticResource MenuHeaderStyle}"/>
-                                        <Image x:Name="NIR_Arrow" Source="/images/arrow.jpg" Width="12" Height="12" Margin="6,2,0,0"/>
+                                        <Image x:Name="NIR_Arrow" Source="{StaticResource ArrowChevronBlueIcon}" Style="{StaticResource ArrowIndicatorStyle}"/>
                                     </StackPanel>
                                 </Border>
 
@@ -458,7 +479,7 @@
                                                 Style="{StaticResource MenuItemStyle}">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="Раздел 1" Style="{StaticResource SubMenuStyle}"/>
-                                                <Image x:Name="NIR_Arrow1" Source="/images/arrow.jpg" Width="12" Height="12" Margin="6,2,0,0"/>
+                                                <Image x:Name="NIR_Arrow1" Source="{StaticResource ArrowChevronBlueIcon}" Style="{StaticResource ArrowIndicatorStyle}"/>
                                             </StackPanel>
                                         </Border>
 
@@ -503,7 +524,7 @@
             Style="{StaticResource MenuItemStyle}">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="Раздел 2" Style="{StaticResource SubMenuStyle}"/>
-                                                <Image x:Name="NIR_Arrow2" Source="/images/arrow.jpg" Width="12" Height="12" Margin="6,2,0,0"/>
+                                                <Image x:Name="NIR_Arrow2" Source="{StaticResource ArrowChevronBlueIcon}" Style="{StaticResource ArrowIndicatorStyle}"/>
                                             </StackPanel>
                                         </Border>
 
@@ -548,7 +569,7 @@
             Style="{StaticResource MenuItemStyle}">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="Раздел 3" Style="{StaticResource SubMenuStyle}"/>
-                                                <Image x:Name="NIR_Arrow3" Source="/images/arrow.jpg" Width="12" Height="12" Margin="6,2,0,0"/>
+                                                <Image x:Name="NIR_Arrow3" Source="{StaticResource ArrowChevronBlueIcon}" Style="{StaticResource ArrowIndicatorStyle}"/>
                                             </StackPanel>
                                         </Border>
 
@@ -575,7 +596,7 @@
             Style="{StaticResource MenuItemStyle}">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="Раздел 4" Style="{StaticResource SubMenuStyle}"/>
-                                                <Image x:Name="NIR_Arrow4" Source="/images/arrow.jpg" Width="12" Height="12" Margin="6,2,0,0"/>
+                                                <Image x:Name="NIR_Arrow4" Source="{StaticResource ArrowChevronBlueIcon}" Style="{StaticResource ArrowIndicatorStyle}"/>
                                             </StackPanel>
                                         </Border>
 
@@ -609,7 +630,7 @@
             Style="{StaticResource MenuItemStyle}">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="Раздел 5" Style="{StaticResource SubMenuStyle}"/>
-                                                <Image x:Name="NIR_Arrow5" Source="/images/arrow.jpg" Width="12" Height="12" Margin="6,2,0,0"/>
+                                                <Image x:Name="NIR_Arrow5" Source="{StaticResource ArrowChevronBlueIcon}" Style="{StaticResource ArrowIndicatorStyle}"/>
                                             </StackPanel>
                                         </Border>
 
@@ -623,7 +644,7 @@
                                                     <StackPanel Orientation="Horizontal">
                                                         <TextBlock Text="Реализуемые стартап-проекты"
                        Style="{StaticResource SubMenuStyle1}" TextWrapping="Wrap"/>
-                                                        <Image x:Name="NIR_Arrow51" Source="/images/arrow.jpg" Width="12" Height="12" Margin="6,2,0,0"/>
+                                                        <Image x:Name="NIR_Arrow51" Source="{StaticResource ArrowChevronBlueIcon}" Style="{StaticResource ArrowIndicatorStyle}"/>
                                                     </StackPanel>
                                                 </Border>
                                                 <StackPanel x:Name="Item_51_SubMenu" Visibility="Collapsed">
@@ -652,7 +673,7 @@
                                                     <StackPanel Orientation="Horizontal">
                                                         <TextBlock Text="Научные конференции"
                        Style="{StaticResource SubMenuStyle1}" TextWrapping="Wrap"/>
-                                                        <Image x:Name="NIR_Arrow53" Source="/images/arrow.jpg" Width="12" Height="12" Margin="6,2,0,0"/>
+                                                        <Image x:Name="NIR_Arrow53" Source="{StaticResource ArrowChevronBlueIcon}" Style="{StaticResource ArrowIndicatorStyle}"/>
                                                     </StackPanel>
                                                 </Border>
                                                 <StackPanel x:Name="Item_53_SubMenu" Visibility="Collapsed">
@@ -707,7 +728,7 @@
             Style="{StaticResource MenuItemStyle}">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="Учебный отчет" Style="{StaticResource MenuHeaderStyle}"/>
-                                        <Image x:Name="Study_Arrow" Source="/images/arrow.jpg" Width="12" Height="12" Margin="6,2,0,0"/>
+                                        <Image x:Name="Study_Arrow" Source="{StaticResource ArrowChevronBlueIcon}" Style="{StaticResource ArrowIndicatorStyle}"/>
                                     </StackPanel>
                                 </Border>
 
@@ -720,7 +741,7 @@
                     Style="{StaticResource MenuItemStyle}">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="Раздел 14" Style="{StaticResource SubMenuStyle}"/>
-                                                <Image x:Name="Study_Arrow14" Source="/images/arrow.jpg" Width="12" Height="12" Margin="6,2,0,0"/>
+                                                <Image x:Name="Study_Arrow14" Source="{StaticResource ArrowChevronBlueIcon}" Style="{StaticResource ArrowIndicatorStyle}"/>
                                             </StackPanel>
                                         </Border>
 
