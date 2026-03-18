@@ -21,6 +21,102 @@ namespace Project_bpi
         public DataBase DB = new DataBase();
         private const string TemplateDatabaseFolderName = "TemplateDatabases";
         private const string SectionContentSubSectionTitle = "__section_content__";
+        private const string StudyReportTitle = "Учебный отчет";
+        private const string NirReportTitle = "Отчет по НИР";
+        private sealed class StudyReportSubSectionSeed
+        {
+            public int Number { get; set; }
+            public string Title { get; set; }
+            public string TablePatternName { get; set; }
+            public string[] Headers { get; set; }
+        }
+
+        private sealed class TableCellSeed
+        {
+            public int Row { get; set; }
+            public int Column { get; set; }
+            public string Text { get; set; }
+            public int ColSpan { get; set; } = 1;
+            public int RowSpan { get; set; } = 1;
+            public bool IsHeader { get; set; }
+        }
+
+        private sealed class TableSeed
+        {
+            public string Title { get; set; }
+            public string PatternName { get; set; }
+            public TableCellSeed[] Cells { get; set; }
+        }
+
+        private sealed class NirSubSectionSeed
+        {
+            public int Number { get; set; }
+            public string Title { get; set; }
+            public string TextPatternName { get; set; }
+            public string TextContent { get; set; }
+            public TableSeed[] Tables { get; set; }
+            public NirSubSectionSeed[] Children { get; set; }
+        }
+
+        private sealed class NirSectionSeed
+        {
+            public int Number { get; set; }
+            public string Title { get; set; }
+            public string TextPatternName { get; set; }
+            public string TextContent { get; set; }
+            public TableSeed[] Tables { get; set; }
+            public NirSubSectionSeed[] SubSections { get; set; }
+        }
+
+        private static readonly StudyReportSubSectionSeed[] StudyReportSubSections =
+        {
+            new StudyReportSubSectionSeed
+            {
+                Number = 1,
+                Title = "Научно-издательская деятельность (факт)",
+                TablePatternName = "study_14_1_table",
+                Headers = new[]
+                {
+                    "№",
+                    "Авторы",
+                    "Количество",
+                    "Тип публикации",
+                    "Источник издания",
+                    "Примечание"
+                }
+            },
+            new StudyReportSubSectionSeed
+            {
+                Number = 2,
+                Title = "Подача заявок на объекты интеллектуальной собственности (факт)",
+                TablePatternName = "study_14_2_table",
+                Headers = new[]
+                {
+                    "№",
+                    "Тип ОИС",
+                    "Авторы",
+                    "Наименование",
+                    "Дата подачи",
+                    "№ патента или свидетельства",
+                    "Примечание"
+                }
+            },
+            new StudyReportSubSectionSeed
+            {
+                Number = 3,
+                Title = "Проведения конференций, семинаров, совещаний (факт)",
+                TablePatternName = "study_14_3_table",
+                Headers = new[]
+                {
+                    "№",
+                    "Название мероприятия",
+                    "Уровень конференции",
+                    "Дата и место проведения",
+                    "Ответственный",
+                    "Примечание"
+                }
+            }
+        };
 
         private readonly Dictionary<Border, Border> parents = new Dictionary<Border, Border>();
         private readonly Dictionary<Border, DynamicTemplateEntry> dynamicTemplates = new Dictionary<Border, DynamicTemplateEntry>();
@@ -78,7 +174,14 @@ namespace Project_bpi
             InitializeComponent();
             InitializeDateRange();
             InitializeMenuHierarchy();
-            Loaded += async (sender, args) => await LoadSavedTemplatesAsync();
+            HideStaticNirReportMenu();
+            HideStaticStudyReportMenu();
+            Loaded += async (sender, args) =>
+            {
+                await EnsureNirReportInDatabaseAsync();
+                await EnsureStudyReportInDatabaseAsync();
+                await LoadSavedTemplatesAsync();
+            };
         }
 
         private void InitializeMenuHierarchy()
@@ -141,6 +244,12 @@ namespace Project_bpi
             parents[Item_141] = Section14_Header;
             parents[Item_142] = Section14_Header;
             parents[Item_143] = Section14_Header;
+        }
+
+        private void HideStaticStudyReportMenu()
+        {
+            Study_Header.Visibility = Visibility.Collapsed;
+            Study_Menu.Visibility = Visibility.Collapsed;
         }
 
         private async void AddTemplateButton_Click(object sender, RoutedEventArgs e)
@@ -455,6 +564,137 @@ namespace Project_bpi
             if (selectedBorder != null)
             {
                 ActivateMenuItem(selectedBorder, true, editMode);
+            }
+        }
+
+        private async Task EnsureStudyReportInDatabaseAsync()
+        {
+            var database = new DataBase(GetSharedTemplateDatabasePath());
+            database.InitializeDatabase(false);
+
+            var reports = await database.GetAllReports();
+            var existingStudyReport = reports.FirstOrDefault(report =>
+                string.Equals(report.Title, StudyReportTitle, StringComparison.Ordinal));
+
+            int reportId;
+            if (existingStudyReport == null)
+            {
+                int patternId = await database.AddFilePattern(new PatternFile
+                {
+                    Title = StudyReportTitle,
+                    Year = DateTime.Today.Year,
+                    Path = database.DatabasePath
+                });
+
+                reportId = await database.AddReport(new Report
+                {
+                    Title = StudyReportTitle,
+                    Year = DateTime.Today.Year,
+                    PattarnId = patternId
+                });
+            }
+            else
+            {
+                reportId = existingStudyReport.Id;
+            }
+
+            var studyReport = await database.GetFullReport(reportId);
+            if (studyReport == null)
+            {
+                return;
+            }
+
+            var section14 = studyReport.Sections.FirstOrDefault(section => section.Number == 14);
+            if (section14 == null)
+            {
+                int sectionId = await database.AddSection(new Section
+                {
+                    ReportId = reportId,
+                    Number = 14,
+                    Title = GetDefaultSectionTitle(14)
+                });
+
+                studyReport = await database.GetFullReport(reportId);
+                section14 = studyReport?.Sections.FirstOrDefault(section => section.Id == sectionId);
+            }
+
+            if (section14 == null)
+            {
+                return;
+            }
+
+            bool addedSubSections = false;
+            foreach (var seed in StudyReportSubSections)
+            {
+                var subsection = section14.SubSections.FirstOrDefault(item =>
+                    !item.ParentSubsectionId.HasValue &&
+                    (item.Number == seed.Number || string.Equals(item.Title, seed.Title, StringComparison.Ordinal)));
+
+                if (subsection != null)
+                {
+                    continue;
+                }
+
+                await database.AddSubsection(new SubSection
+                {
+                    SectionId = section14.Id,
+                    ParentSubsectionId = null,
+                    Number = seed.Number,
+                    Title = seed.Title
+                });
+                addedSubSections = true;
+            }
+
+            if (addedSubSections)
+            {
+                studyReport = await database.GetFullReport(reportId);
+                section14 = studyReport?.Sections.FirstOrDefault(section => section.Number == 14);
+            }
+
+            if (section14 == null)
+            {
+                return;
+            }
+
+            foreach (var seed in StudyReportSubSections)
+            {
+                var subsection = section14.SubSections.FirstOrDefault(item =>
+                    !item.ParentSubsectionId.HasValue &&
+                    string.Equals(item.Title, seed.Title, StringComparison.Ordinal));
+
+                if (subsection == null)
+                {
+                    continue;
+                }
+
+                var existingTable = subsection.Tables.FirstOrDefault(table =>
+                    string.Equals(table.PatternName, seed.TablePatternName, StringComparison.Ordinal));
+
+                if (existingTable != null)
+                {
+                    continue;
+                }
+
+                int tableId = await database.AddTable(new Table
+                {
+                    Title = seed.Title,
+                    SubsectionId = subsection.Id,
+                    PatternName = seed.TablePatternName
+                });
+
+                for (int column = 0; column < seed.Headers.Length; column++)
+                {
+                    await database.AddTableItem(new TableItem
+                    {
+                        TableId = tableId,
+                        Row = 1,
+                        Column = column + 1,
+                        Header = seed.Headers[column],
+                        ColSpan = 1,
+                        RowSpan = 1,
+                        IsHeader = true
+                    });
+                }
             }
         }
 
@@ -821,6 +1061,18 @@ namespace Project_bpi
 
         private string BuildSectionTitle(Section section)
         {
+            if (section == null)
+            {
+                return string.Empty;
+            }
+
+            if (section.Number <= 0)
+            {
+                return string.IsNullOrWhiteSpace(section.Title)
+                    ? string.Empty
+                    : section.Title.Trim();
+            }
+
             string defaultTitle = GetDefaultSectionTitle(section?.Number ?? 0);
 
             if (string.IsNullOrWhiteSpace(section.Title))
@@ -838,6 +1090,11 @@ namespace Project_bpi
 
         private string BuildSectionMenuTitle(Section section)
         {
+            if (section != null && section.Number <= 0 && !string.IsNullOrWhiteSpace(section.Title))
+            {
+                return section.Title.Trim();
+            }
+
             return GetDefaultSectionTitle(section?.Number ?? 0);
         }
 
@@ -1181,6 +1438,11 @@ namespace Project_bpi
             }
 
             string title = section.Title.Trim();
+            if (section.Number <= 0)
+            {
+                return title;
+            }
+
             return string.Equals(title, GetDefaultSectionTitle(section.Number), StringComparison.Ordinal)
                 ? string.Empty
                 : $"{section.Number} {title}";
@@ -1574,7 +1836,7 @@ namespace Project_bpi
 
             panel.Children.Add(new TextBlock
             {
-                Text = "Нажмите на ячейку и печатайте прямо в таблице. Верхняя строка относится к шапке, новые строки добавляются как строки данных.",
+                Text = "Нажмите на ячейку и печатайте прямо в таблице. Первая строка относится к шапке, под ней автоматически показывается нумерация столбцов, новые строки добавляются как строки данных.",
                 Margin = new Thickness(0, 0, 0, 8),
                 Foreground = Brushes.DimGray,
                 TextWrapping = TextWrapping.Wrap
@@ -1694,7 +1956,9 @@ namespace Project_bpi
         private UIElement CreateEditableTableGrid(TableEditorContext context)
         {
             var structure = context.Structure;
-            int totalRowCount = structure.HeaderRowCount + structure.BodyRowCount;
+            bool hasAutoNumberRow = ShouldShowAutoNumberRow(structure);
+            int numberRowOffset = hasAutoNumberRow ? 1 : 0;
+            int totalDisplayRowCount = structure.HeaderRowCount + numberRowOffset + structure.BodyRowCount;
 
             var grid = new Grid
             {
@@ -1702,7 +1966,7 @@ namespace Project_bpi
             };
 
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(28) });
-            for (int rowIndex = 0; rowIndex < totalRowCount; rowIndex++)
+            for (int rowIndex = 0; rowIndex < totalDisplayRowCount; rowIndex++)
             {
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             }
@@ -1721,7 +1985,12 @@ namespace Project_bpi
             AddColumnHandles(grid, context);
             AddRowHandles(grid, context);
             AddEditableCellsToGrid(grid, structure.HeaderCells, 1, 1);
-            AddEditableCellsToGrid(grid, structure.BodyCells, structure.HeaderRowCount + 1, 1);
+            if (hasAutoNumberRow)
+            {
+                AddAutoNumberRowToGrid(grid, structure.HeaderRowCount + 1, structure.ColumnCount, 1);
+            }
+
+            AddEditableCellsToGrid(grid, structure.BodyCells, structure.HeaderRowCount + numberRowOffset + 1, 1);
 
             return new Border
             {
@@ -1803,28 +2072,33 @@ namespace Project_bpi
 
         private void AddRowHandles(Grid grid, TableEditorContext context)
         {
-            int totalRowCount = context.Structure.HeaderRowCount + context.Structure.BodyRowCount;
-            for (int visualRow = 1; visualRow <= totalRowCount; visualRow++)
+            bool hasAutoNumberRow = ShouldShowAutoNumberRow(context.Structure);
+            int numberRowOffset = hasAutoNumberRow ? 1 : 0;
+            int totalStructureRowCount = context.Structure.HeaderRowCount + context.Structure.BodyRowCount;
+
+            for (int structureRow = 1; structureRow <= totalStructureRowCount; structureRow++)
             {
-                int targetRow = visualRow;
-                bool isHeaderRow = targetRow <= context.Structure.HeaderRowCount;
+                bool isHeaderRow = structureRow <= context.Structure.HeaderRowCount;
                 bool canDelete = isHeaderRow
                     ? context.Structure.HeaderRowCount > 1
                     : context.Structure.BodyRowCount > 0;
+                int gridRow = isHeaderRow
+                    ? structureRow
+                    : structureRow + numberRowOffset;
 
                 var handle = CreateTableEdgeHandle(
                     plusToolTip: "Вставить строку",
                     minusToolTip: "Удалить строку",
                     onPlusClick: () =>
                     {
-                        InsertTableRow(context, targetRow);
+                        InsertTableRow(context, structureRow);
                     },
                     onMinusClick: canDelete
-                        ? (System.Action)(() => DeleteTableRow(context, targetRow))
+                        ? (System.Action)(() => DeleteTableRow(context, structureRow))
                         : null,
                     isColumnHandle: false);
 
-                Grid.SetRow(handle, targetRow);
+                Grid.SetRow(handle, gridRow);
                 Grid.SetColumn(handle, 0);
                 grid.Children.Add(handle);
             }
@@ -1834,12 +2108,12 @@ namespace Project_bpi
                 minusToolTip: null,
                 onPlusClick: () =>
                 {
-                    InsertTableRow(context, totalRowCount + 1);
+                    InsertTableRow(context, totalStructureRowCount + 1);
                 },
                 onMinusClick: null,
                 isColumnHandle: false);
 
-            Grid.SetRow(trailingHandle, totalRowCount + 1);
+            Grid.SetRow(trailingHandle, totalStructureRowCount + numberRowOffset + 1);
             Grid.SetColumn(trailingHandle, 0);
             grid.Children.Add(trailingHandle);
         }
@@ -2671,11 +2945,22 @@ namespace Project_bpi
             }
 
             var database = new DataBase(templateEntry.DatabasePath);
-            await database.AddTable(new Table
+            int tableId = await database.AddTable(new Table
             {
                 Title = dialog.TemplateName.Trim(),
                 SubsectionId = targetSubSection.Id,
                 PatternName = $"table_{DateTime.Now.Ticks}"
+            });
+
+            await database.AddTableItem(new TableItem
+            {
+                TableId = tableId,
+                Row = 1,
+                Column = 1,
+                Header = string.Empty,
+                ColSpan = 1,
+                RowSpan = 1,
+                IsHeader = true
             });
 
             if (refreshSectionId.HasValue)
@@ -3063,6 +3348,7 @@ namespace Project_bpi
         private UIElement CreateStyledTablePreview(TableStructure structure)
         {
             int columnCount = structure.ColumnCount;
+            bool hasAutoNumberRow = ShouldShowAutoNumberRow(structure);
 
             if (columnCount == 0)
             {
@@ -3105,6 +3391,11 @@ namespace Project_bpi
                 panel.Children.Add(headerGrid);
             }
 
+            if (hasAutoNumberRow)
+            {
+                panel.Children.Add(CreateAutoNumberRowGrid(columnCount));
+            }
+
             if (structure.BodyRowCount > 0)
             {
                 var bodyGrid = new Grid();
@@ -3132,6 +3423,44 @@ namespace Project_bpi
                 BorderThickness = new Thickness(1),
                 Child = panel
             };
+        }
+
+        private bool ShouldShowAutoNumberRow(TableStructure structure)
+        {
+            return structure != null
+                && structure.HeaderRowCount > 0
+                && structure.ColumnCount > 0;
+        }
+
+        private Grid CreateAutoNumberRowGrid(int columnCount)
+        {
+            var grid = new Grid
+            {
+                Background = Brushes.White
+            };
+
+            for (int index = 0; index < columnCount; index++)
+            {
+                grid.ColumnDefinitions.Add(new ColumnDefinition
+                {
+                    Width = index == 0 ? new GridLength(50) : new GridLength(1, GridUnitType.Star)
+                });
+            }
+
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            AddAutoNumberRowToGrid(grid, 0, columnCount, 0);
+            return grid;
+        }
+
+        private void AddAutoNumberRowToGrid(Grid grid, int gridRowIndex, int columnCount, int columnOffset)
+        {
+            for (int column = 1; column <= columnCount; column++)
+            {
+                var numberBorder = CreateAutoNumberCellBorder(column.ToString());
+                Grid.SetRow(numberBorder, gridRowIndex);
+                Grid.SetColumn(numberBorder, columnOffset + column - 1);
+                grid.Children.Add(numberBorder);
+            }
         }
 
         private void AddHeaderCells(Grid root, TableStructure structure, int columnCount)
@@ -3223,6 +3552,27 @@ namespace Project_bpi
                     TextAlignment = TextAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                     TextWrapping = TextWrapping.Wrap
+                }
+            };
+        }
+
+        private Border CreateAutoNumberCellBorder(string text)
+        {
+            return new Border
+            {
+                BorderBrush = Brushes.Black,
+                BorderThickness = new Thickness(0, 0, 1, 1),
+                Padding = new Thickness(8, 6, 8, 6),
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#f8f9fa")),
+                Child = new TextBlock
+                {
+                    Text = text,
+                    FontSize = 10,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = Brushes.Black,
+                    TextAlignment = TextAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextWrapping = TextWrapping.NoWrap
                 }
             };
         }

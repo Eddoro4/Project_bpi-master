@@ -321,6 +321,7 @@
     <Compile Include="ContractResearchView.xaml.cs">
       <DependentUpon>ContractResearchView.xaml</DependentUpon>
     </Compile>
+    <Compile Include="MainWindow.NirSeed.cs" />
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
