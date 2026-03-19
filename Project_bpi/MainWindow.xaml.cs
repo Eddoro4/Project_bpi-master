@@ -170,6 +170,26 @@ namespace Project_bpi
             public TableStructure Structure { get; set; }
             public ContentControl TableEditorHost { get; set; }
             public Func<TableEditorContext, UIElement> TableViewFactory { get; set; }
+            public bool FiltersEnabled { get; set; }
+            public Dictionary<int, TableColumnFilterState> ColumnFilters { get; } = new Dictionary<int, TableColumnFilterState>();
+        }
+
+        private enum TableColumnSortMode
+        {
+            None,
+            AlphabetAsc,
+            AlphabetDesc,
+            ValueAsc,
+            ValueDesc
+        }
+
+        private sealed class TableColumnFilterState
+        {
+            public string SearchText { get; set; }
+            public TableColumnSortMode SortMode { get; set; }
+
+            public bool HasSettings =>
+                !string.IsNullOrWhiteSpace(SearchText) || SortMode != TableColumnSortMode.None;
         }
 
         public MainWindow()
@@ -1605,14 +1625,29 @@ namespace Project_bpi
 
             var content = new StackPanel();
 
-            content.Children.Add(new TextBlock
+            var titleRow = new Grid
+            {
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var titleBlock = new TextBlock
             {
                 Text = table.Title,
                 FontWeight = FontWeights.Bold,
-                Margin = new Thickness(0, 0, 0, 8),
                 Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0167a4")),
-                TextWrapping = TextWrapping.Wrap
-            });
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(titleBlock, 0);
+            titleRow.Children.Add(titleBlock);
+
+            var toggleFiltersButton = CreateTableFiltersToggleButton(context);
+            Grid.SetColumn(toggleFiltersButton, 1);
+            titleRow.Children.Add(toggleFiltersButton);
+
+            content.Children.Add(titleRow);
 
             previewHost.Content = CreateFillableTableGrid(context);
             content.Children.Add(previewHost);
@@ -2044,6 +2079,7 @@ namespace Project_bpi
                 BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#ced4da")),
                 BorderThickness = new Thickness(1),
                 Background = Brushes.White,
+                ClipToBounds = true,
                 Child = grid
             };
         }
@@ -2054,6 +2090,7 @@ namespace Project_bpi
 
             var structure = context.Structure;
             int columnCount = structure.ColumnCount;
+            var visibleBodyRows = GetVisibleBodyRows(context);
 
             if (columnCount == 0)
             {
@@ -2076,6 +2113,11 @@ namespace Project_bpi
                 Background = Brushes.White
             };
 
+            if (context?.FiltersEnabled == true)
+            {
+                panel.Children.Add(CreateTableColumnFiltersRow(context, columnCount));
+            }
+
             if (structure.HeaderRowCount > 0)
             {
                 var headerGrid = new Grid();
@@ -2095,28 +2137,24 @@ namespace Project_bpi
                 var bodyGrid = new Grid();
                 ConfigurePreviewTableColumns(bodyGrid, columnCount);
 
-                for (int rowIndex = 0; rowIndex < structure.BodyRowCount; rowIndex++)
+                for (int rowIndex = 0; rowIndex < visibleBodyRows.Count; rowIndex++)
                 {
                     bodyGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 }
 
-                AddFillablePreviewCellsToGrid(bodyGrid, context, structure.BodyCells, structure.BodyRowCount, columnCount);
-                panel.Children.Add(bodyGrid);
+                if (visibleBodyRows.Count > 0)
+                {
+                    AddFillablePreviewCellsToGrid(bodyGrid, context, structure.BodyCells, visibleBodyRows, columnCount);
+                    panel.Children.Add(bodyGrid);
+                }
+                else
+                {
+                    panel.Children.Add(CreateEmptyTableMessageBorder("По выбранным фильтрам строки не найдены."));
+                }
             }
             else
             {
-                panel.Children.Add(new Border
-                {
-                    BorderBrush = Brushes.Black,
-                    BorderThickness = new Thickness(0, 0, 0, 1),
-                    Padding = new Thickness(10),
-                    Child = new TextBlock
-                    {
-                        Text = "Строки данных отсутствуют. Добавьте строку, чтобы заполнить таблицу.",
-                        Foreground = Brushes.Gray,
-                        TextWrapping = TextWrapping.Wrap
-                    }
-                });
+                panel.Children.Add(CreateEmptyTableMessageBorder("Строки данных отсутствуют. Добавьте строку, чтобы заполнить таблицу."));
             }
 
             return new Border
@@ -2124,8 +2162,491 @@ namespace Project_bpi
                 Background = Brushes.White,
                 BorderBrush = Brushes.Black,
                 BorderThickness = new Thickness(1),
-                Child = panel
+                ClipToBounds = true,
+                Child = new ScrollViewer
+                {
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    Content = panel
+                }
             };
+        }
+
+        private Border CreateEmptyTableMessageBorder(string message)
+        {
+            return new Border
+            {
+                BorderBrush = Brushes.Black,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(10),
+                Child = new TextBlock
+                {
+                    Text = message,
+                    Foreground = Brushes.Gray,
+                    TextWrapping = TextWrapping.Wrap
+                }
+            };
+        }
+
+        private Button CreateTableFiltersToggleButton(TableEditorContext context)
+        {
+            bool isEnabled = context?.FiltersEnabled == true;
+            var activeBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0167a4"));
+            var inactiveBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#d6e2ea"));
+            var button = new Button
+            {
+                Width = 32,
+                Height = 32,
+                Margin = new Thickness(12, 0, 0, 0),
+                Padding = new Thickness(0),
+                BorderThickness = new Thickness(1),
+                BorderBrush = isEnabled ? activeBrush : inactiveBrush,
+                Background = isEnabled ? activeBrush : Brushes.White,
+                Cursor = Cursors.Hand,
+                ToolTip = isEnabled ? "Выключить фильтры таблицы" : "Включить фильтры таблицы",
+                Content = CreateTableFilterIcon(isEnabled ? Brushes.White : activeBrush),
+                Focusable = false
+            };
+
+            button.Click += (sender, args) =>
+            {
+                context.FiltersEnabled = !context.FiltersEnabled;
+                if (!context.FiltersEnabled)
+                {
+                    context.ColumnFilters.Clear();
+                }
+
+                RefreshTableEditor(context);
+            };
+
+            return button;
+        }
+
+        private UIElement CreateTableColumnFiltersRow(TableEditorContext context, int columnCount)
+        {
+            var grid = new Grid
+            {
+                Background = Brushes.White,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            ConfigurePreviewTableColumns(grid, columnCount);
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            for (int columnIndex = 1; columnIndex <= columnCount; columnIndex++)
+            {
+                bool isActive = TryGetTableColumnFilterState(context, columnIndex, out var filterState) && filterState.HasSettings;
+                var border = new Border
+                {
+                    BorderBrush = Brushes.Black,
+                    BorderThickness = new Thickness(0, 0, 1, 1),
+                    Background = isActive
+                        ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#eef6ff"))
+                        : Brushes.White,
+                    Padding = new Thickness(6, 4, 6, 4),
+                    Child = CreateTableColumnFilterButton(context, columnIndex, isActive)
+                };
+
+                Grid.SetColumn(border, columnIndex - 1);
+                grid.Children.Add(border);
+            }
+
+            return grid;
+        }
+
+        private Button CreateTableColumnFilterButton(TableEditorContext context, int columnIndex, bool isActive)
+        {
+            var accentBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0167a4"));
+            var button = new Button
+            {
+                Width = 22,
+                Height = 22,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                ToolTip = $"Фильтр столбца {columnIndex}",
+                Content = CreateTableFilterIcon(isActive ? accentBrush : Brushes.DimGray),
+                Focusable = false
+            };
+
+            button.Click += (sender, args) => ShowTableColumnFilterDialog(context, columnIndex, button);
+            return button;
+        }
+
+        private UIElement CreateTableFilterIcon(Brush strokeBrush)
+        {
+            return new Viewbox
+            {
+                Width = 14,
+                Height = 14,
+                Child = new System.Windows.Shapes.Path
+                {
+                    Data = Geometry.Parse("M3 4.6C3 4.03995 3 3.75992 3.10899 3.54601C3.20487 3.35785 3.35785 3.20487 3.54601 3.10899C3.75992 3 4.03995 3 4.6 3H19.4C19.9601 3 20.2401 3 20.454 3.10899C20.6422 3.20487 20.7951 3.35785 20.891 3.54601C21 3.75992 21 4.03995 21 4.6V6.33726C21 6.58185 21 6.70414 20.9724 6.81923C20.9479 6.92127 20.9075 7.01881 20.8526 7.10828C20.7908 7.2092 20.7043 7.29568 20.5314 7.46863L14.4686 13.5314C14.2957 13.7043 14.2092 13.7908 14.1474 13.8917C14.0925 13.9812 14.0521 14.0787 14.0276 14.1808C14 14.2959 14 14.4182 14 14.6627V17L10 21V14.6627C10 14.4182 10 14.2959 9.97237 14.1808C9.94787 14.0787 9.90747 13.9812 9.85264 13.8917C9.7908 13.7908 9.70432 13.7043 9.53137 13.5314L3.46863 7.46863C3.29568 7.29568 3.2092 7.2092 3.14736 7.10828C3.09253 7.01881 3.05213 6.92127 3.02763 6.81923C3 6.70414 3 6.58185 3 6.33726V4.6Z"),
+                    Stretch = Stretch.Uniform,
+                    Stroke = strokeBrush,
+                    StrokeThickness = 2,
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round,
+                    StrokeLineJoin = PenLineJoin.Round
+                }
+            };
+        }
+
+        private void ShowTableColumnFilterDialog(TableEditorContext context, int columnIndex, FrameworkElement placementTarget)
+        {
+            TableColumnFilterState currentState = TryGetTableColumnFilterState(context, columnIndex, out var existingState)
+                ? existingState
+                : new TableColumnFilterState();
+            TableColumnSortMode selectedSortMode = currentState.SortMode;
+
+            var popup = new Popup
+            {
+                PlacementTarget = placementTarget,
+                Placement = PlacementMode.Bottom,
+                StaysOpen = false,
+                AllowsTransparency = true,
+                PopupAnimation = PopupAnimation.Fade
+            };
+
+            var accentBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0167a4"));
+            var borderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#d6e2ea"));
+
+            var root = new Border
+            {
+                Width = 260,
+                Background = Brushes.White,
+                BorderBrush = borderBrush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                SnapsToDevicePixels = true,
+                Child = new StackPanel()
+            };
+
+            var panel = (StackPanel)root.Child;
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Поиск по значению",
+                Margin = new Thickness(12, 10, 12, 6),
+                Foreground = accentBrush,
+                FontWeight = FontWeights.SemiBold
+            });
+
+            var searchBox = new TextBox
+            {
+                Text = currentState.SearchText ?? string.Empty,
+                Margin = new Thickness(12, 0, 12, 10),
+                Padding = new Thickness(8, 6, 8, 6)
+            };
+            panel.Children.Add(searchBox);
+
+            Action closePopup = () =>
+            {
+                popup.IsOpen = false;
+            };
+
+            searchBox.KeyDown += (sender, args) =>
+            {
+                if (args.Key != Key.Enter)
+                {
+                    return;
+                }
+
+                ApplyTableColumnFilter(context, columnIndex, searchBox.Text, selectedSortMode);
+                closePopup();
+                args.Handled = true;
+            };
+
+            panel.Children.Add(new Border
+            {
+                Height = 1,
+                Background = borderBrush
+            });
+
+            panel.Children.Add(CreateTableFilterPopupButton(
+                "A↓",
+                "Сортировка от А до Я",
+                selectedSortMode == TableColumnSortMode.AlphabetAsc,
+                () =>
+                {
+                    selectedSortMode = selectedSortMode == TableColumnSortMode.AlphabetAsc
+                        ? TableColumnSortMode.None
+                        : TableColumnSortMode.AlphabetAsc;
+                    ApplyTableColumnFilter(context, columnIndex, searchBox.Text, selectedSortMode);
+                    closePopup();
+                }));
+
+            panel.Children.Add(CreateTableFilterPopupButton(
+                "A↑",
+                "Сортировка от Я до А",
+                selectedSortMode == TableColumnSortMode.AlphabetDesc,
+                () =>
+                {
+                    selectedSortMode = selectedSortMode == TableColumnSortMode.AlphabetDesc
+                        ? TableColumnSortMode.None
+                        : TableColumnSortMode.AlphabetDesc;
+                    ApplyTableColumnFilter(context, columnIndex, searchBox.Text, selectedSortMode);
+                    closePopup();
+                }));
+
+            panel.Children.Add(CreateTableFilterPopupButton(
+                "1↓",
+                "Сортировка по возрастанию",
+                selectedSortMode == TableColumnSortMode.ValueAsc,
+                () =>
+                {
+                    selectedSortMode = selectedSortMode == TableColumnSortMode.ValueAsc
+                        ? TableColumnSortMode.None
+                        : TableColumnSortMode.ValueAsc;
+                    ApplyTableColumnFilter(context, columnIndex, searchBox.Text, selectedSortMode);
+                    closePopup();
+                }));
+
+            panel.Children.Add(CreateTableFilterPopupButton(
+                "1↑",
+                "Сортировка по убыванию",
+                selectedSortMode == TableColumnSortMode.ValueDesc,
+                () =>
+                {
+                    selectedSortMode = selectedSortMode == TableColumnSortMode.ValueDesc
+                        ? TableColumnSortMode.None
+                        : TableColumnSortMode.ValueDesc;
+                    ApplyTableColumnFilter(context, columnIndex, searchBox.Text, selectedSortMode);
+                    closePopup();
+                }));
+
+            if (currentState.HasSettings)
+            {
+                panel.Children.Add(new Border
+                {
+                    Height = 1,
+                    Background = borderBrush
+                });
+
+                panel.Children.Add(CreateTableFilterPopupButton(
+                    "×",
+                    "Сбросить фильтр",
+                    false,
+                    () =>
+                    {
+                        context.ColumnFilters.Remove(columnIndex);
+                        RefreshTableEditor(context);
+                        closePopup();
+                    }));
+            }
+
+            popup.Child = root;
+            popup.IsOpen = true;
+            searchBox.Focus();
+            searchBox.SelectAll();
+        }
+
+        private Button CreateTableFilterPopupButton(string iconText, string text, bool isSelected, Action onClick)
+        {
+            var accentBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0167a4"));
+            var button = new Button
+            {
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(0),
+                Background = isSelected
+                    ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#eef6ff"))
+                    : Brushes.White,
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                Focusable = false
+            };
+
+            var grid = new Grid
+            {
+                Margin = new Thickness(0)
+            };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var iconBlock = new TextBlock
+            {
+                Text = iconText,
+                Foreground = accentBrush,
+                FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(iconBlock, 0);
+            grid.Children.Add(iconBlock);
+
+            var textBlock = new TextBlock
+            {
+                Text = text,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#343a40")),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 8, 12, 8)
+            };
+            Grid.SetColumn(textBlock, 1);
+            grid.Children.Add(textBlock);
+
+            button.Content = grid;
+            button.Click += (sender, args) => onClick();
+            return button;
+        }
+
+        private void ApplyTableColumnFilter(TableEditorContext context, int columnIndex, string searchText, TableColumnSortMode sortMode)
+        {
+            string normalizedSearchText = (searchText ?? string.Empty).Trim();
+
+            if (sortMode != TableColumnSortMode.None)
+            {
+                foreach (var otherKey in context.ColumnFilters.Keys.ToList())
+                {
+                    if (otherKey == columnIndex)
+                    {
+                        continue;
+                    }
+
+                    context.ColumnFilters[otherKey].SortMode = TableColumnSortMode.None;
+                    if (!context.ColumnFilters[otherKey].HasSettings)
+                    {
+                        context.ColumnFilters.Remove(otherKey);
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedSearchText) && sortMode == TableColumnSortMode.None)
+            {
+                context.ColumnFilters.Remove(columnIndex);
+            }
+            else
+            {
+                context.ColumnFilters[columnIndex] = new TableColumnFilterState
+                {
+                    SearchText = normalizedSearchText,
+                    SortMode = sortMode
+                };
+            }
+
+            RefreshTableEditor(context);
+        }
+
+        private bool TryGetTableColumnFilterState(TableEditorContext context, int columnIndex, out TableColumnFilterState filterState)
+        {
+            filterState = null;
+            return context != null
+                && context.ColumnFilters != null
+                && context.ColumnFilters.TryGetValue(columnIndex, out filterState)
+                && filterState != null;
+        }
+
+        private IReadOnlyList<int> GetVisibleBodyRows(TableEditorContext context)
+        {
+            if (context?.Structure == null || context.Structure.BodyRowCount <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            var rows = Enumerable.Range(1, context.Structure.BodyRowCount).ToList();
+            if (context.ColumnFilters == null || context.ColumnFilters.Count == 0)
+            {
+                return rows;
+            }
+
+            foreach (var filter in context.ColumnFilters
+                .Where(item => item.Value != null && !string.IsNullOrWhiteSpace(item.Value.SearchText))
+                .OrderBy(item => item.Key))
+            {
+                string searchText = filter.Value.SearchText.Trim();
+                rows = rows
+                    .Where(row => GetBodyCellText(context.Structure, row, filter.Key)
+                        .IndexOf(searchText, StringComparison.CurrentCultureIgnoreCase) >= 0)
+                    .ToList();
+            }
+
+            var activeSort = context.ColumnFilters
+                .Where(item => item.Value != null && item.Value.SortMode != TableColumnSortMode.None)
+                .OrderBy(item => item.Key)
+                .FirstOrDefault();
+
+            if (activeSort.Value != null)
+            {
+                rows = rows
+                    .OrderBy(row => row, Comparer<int>.Create((leftRow, rightRow) =>
+                    {
+                        int result = CompareBodyRows(
+                            context.Structure,
+                            leftRow,
+                            rightRow,
+                            activeSort.Key,
+                            activeSort.Value.SortMode);
+                        return result != 0 ? result : leftRow.CompareTo(rightRow);
+                    }))
+                    .ToList();
+            }
+
+            return rows;
+        }
+
+        private int CompareBodyRows(
+            TableStructure structure,
+            int leftRow,
+            int rightRow,
+            int columnIndex,
+            TableColumnSortMode sortMode)
+        {
+            string leftText = GetBodyCellText(structure, leftRow, columnIndex);
+            string rightText = GetBodyCellText(structure, rightRow, columnIndex);
+
+            switch (sortMode)
+            {
+                case TableColumnSortMode.AlphabetAsc:
+                    return StringComparer.CurrentCultureIgnoreCase.Compare(leftText, rightText);
+                case TableColumnSortMode.AlphabetDesc:
+                    return StringComparer.CurrentCultureIgnoreCase.Compare(rightText, leftText);
+                case TableColumnSortMode.ValueAsc:
+                    return CompareBodyRowValues(leftText, rightText);
+                case TableColumnSortMode.ValueDesc:
+                    return CompareBodyRowValues(rightText, leftText);
+                default:
+                    return 0;
+            }
+        }
+
+        private int CompareBodyRowValues(string leftText, string rightText)
+        {
+            bool leftIsNumber = TryParseTableNumericValue(leftText, out decimal leftValue);
+            bool rightIsNumber = TryParseTableNumericValue(rightText, out decimal rightValue);
+
+            if (leftIsNumber && rightIsNumber)
+            {
+                return leftValue.CompareTo(rightValue);
+            }
+
+            if (leftIsNumber != rightIsNumber)
+            {
+                return leftIsNumber ? -1 : 1;
+            }
+
+            return StringComparer.CurrentCultureIgnoreCase.Compare(leftText, rightText);
+        }
+
+        private bool TryParseTableNumericValue(string value, out decimal numericValue)
+        {
+            string normalized = (value ?? string.Empty).Trim();
+            if (decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.CurrentCulture, out numericValue))
+            {
+                return true;
+            }
+
+            return decimal.TryParse(normalized.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out numericValue);
+        }
+
+        private string GetBodyCellText(TableStructure structure, int bodyRow, int columnIndex)
+        {
+            var cell = structure?.BodyCells.FirstOrDefault(item =>
+                bodyRow >= item.Row &&
+                bodyRow < item.Row + item.RowSpan &&
+                columnIndex >= item.Column &&
+                columnIndex < item.Column + item.ColSpan);
+
+            return cell?.Text?.Trim() ?? string.Empty;
         }
 
         private string GetTemplateStorageDescription(DynamicTemplateEntry templateEntry)
@@ -2469,35 +2990,40 @@ namespace Project_bpi
             Grid grid,
             TableEditorContext context,
             IReadOnlyCollection<TableCellDefinition> cells,
-            int rowCount,
+            IReadOnlyList<int> visibleRows,
             int columnCount)
         {
             var readOnlyCells = GetReadOnlySeededBodyCells(context?.Table);
-            var occupied = new bool[rowCount + 1, columnCount + 1];
+            var rowMap = visibleRows
+                .Select((originalRow, index) => new { originalRow, displayRow = index + 1 })
+                .ToDictionary(item => item.originalRow, item => item.displayRow);
+            var occupied = new bool[visibleRows.Count + 1, columnCount + 1];
 
             foreach (var cell in cells.OrderBy(item => item.Row).ThenBy(item => item.Column))
             {
+                if (!rowMap.TryGetValue(cell.Row, out int displayRow))
+                {
+                    continue;
+                }
+
                 bool shouldRenderAsHeader = cell.IsHeader;
                 UIElement element = shouldRenderAsHeader || readOnlyCells.Contains(GetTableCellSeedKey(cell))
                     ? (UIElement)CreateTableCellBorder(cell.Text, cell.IsHeader)
                     : CreateEditableTableCellTextBox(cell);
 
-                Grid.SetRow(element, cell.Row - 1);
+                Grid.SetRow(element, displayRow - 1);
                 Grid.SetColumn(element, cell.Column - 1);
                 Grid.SetColumnSpan(element, cell.ColSpan);
-                Grid.SetRowSpan(element, cell.RowSpan);
+                Grid.SetRowSpan(element, 1);
                 grid.Children.Add(element);
 
-                for (int row = cell.Row; row < cell.Row + cell.RowSpan; row++)
+                for (int column = cell.Column; column < cell.Column + cell.ColSpan; column++)
                 {
-                    for (int column = cell.Column; column < cell.Column + cell.ColSpan; column++)
-                    {
-                        occupied[row, column] = true;
-                    }
+                    occupied[displayRow, column] = true;
                 }
             }
 
-            for (int row = 1; row <= rowCount; row++)
+            for (int row = 1; row <= visibleRows.Count; row++)
             {
                 for (int column = 1; column <= columnCount; column++)
                 {
@@ -2641,7 +3167,7 @@ namespace Project_bpi
             var textBox = new TextBox
             {
                 Text = cell.Text ?? string.Empty,
-                MinWidth = 140,
+                MinWidth = 0,
                 MinHeight = cell.IsHeader ? 56 : 48,
                 Padding = new Thickness(10, 8, 10, 8),
                 BorderThickness = new Thickness(1),
@@ -2653,9 +3179,14 @@ namespace Project_bpi
                 FontWeight = cell.IsHeader ? FontWeights.SemiBold : FontWeights.Normal,
                 TextWrapping = TextWrapping.Wrap,
                 AcceptsReturn = true,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 VerticalContentAlignment = VerticalAlignment.Center,
                 HorizontalContentAlignment = cell.IsHeader ? HorizontalAlignment.Center : HorizontalAlignment.Left,
-                TextAlignment = cell.IsHeader ? TextAlignment.Center : TextAlignment.Left
+                TextAlignment = cell.IsHeader ? TextAlignment.Center : TextAlignment.Left,
+                ClipToBounds = true
             };
 
             textBox.TextChanged += (sender, args) =>
@@ -3682,6 +4213,8 @@ namespace Project_bpi
             public int BodyRowCount { get; set; }
         }
 
+        private const double PreviewTableColumnWidth = 160;
+
         private TableStructure ExtractTableStructure(Table table)
         {
             var structure = new TableStructure();
@@ -3985,17 +4518,25 @@ namespace Project_bpi
                 Background = Brushes.White,
                 BorderBrush = Brushes.Black,
                 BorderThickness = new Thickness(1),
-                Child = panel
+                ClipToBounds = true,
+                Child = new ScrollViewer
+                {
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    Content = panel
+                }
             };
         }
 
         private void ConfigurePreviewTableColumns(Grid grid, int columnCount)
         {
+            grid.ClipToBounds = true;
+
             for (int index = 0; index < columnCount; index++)
             {
                 grid.ColumnDefinitions.Add(new ColumnDefinition
                 {
-                    Width = index == 0 ? new GridLength(50) : new GridLength(1, GridUnitType.Star)
+                    Width = new GridLength(PreviewTableColumnWidth)
                 });
             }
         }
@@ -4048,16 +4589,11 @@ namespace Project_bpi
         {
             var grid = new Grid
             {
-                Background = Brushes.White
+                Background = Brushes.White,
+                ClipToBounds = true
             };
 
-            for (int index = 0; index < columnCount; index++)
-            {
-                grid.ColumnDefinitions.Add(new ColumnDefinition
-                {
-                    Width = index == 0 ? new GridLength(50) : new GridLength(1, GridUnitType.Star)
-                });
-            }
+            ConfigurePreviewTableColumns(grid, columnCount);
 
             for (int index = 0; index < columnCount; index++)
             {
@@ -4080,6 +4616,7 @@ namespace Project_bpi
                 BorderThickness = new Thickness(0, 0, 1, 1),
                 Padding = new Thickness(8, 10, 8, 10),
                 Background = Brushes.White,
+                ClipToBounds = true,
                 Child = new TextBlock
                 {
                     Text = text,
@@ -4088,7 +4625,8 @@ namespace Project_bpi
                     Foreground = Brushes.Black,
                     TextAlignment = TextAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
-                    TextWrapping = TextWrapping.Wrap
+                    TextWrapping = TextWrapping.Wrap,
+                    TextTrimming = TextTrimming.None
                 }
             };
         }
