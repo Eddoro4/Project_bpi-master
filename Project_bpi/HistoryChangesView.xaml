@@ -1,15 +1,14 @@
 ﻿<UserControl x:Class="Project_bpi.HistoryChangesView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:local="clr-namespace:Project_bpi"
-             mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="450"
+             d:DesignWidth="800"
              Background="White">
 
     <UserControl.Resources>
-        <!-- Стиль для кнопок фильтра -->
         <Style x:Key="FilterButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#FF225CAB"/>
             <Setter Property="Foreground" Value="White"/>
@@ -22,8 +21,8 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}"
-                        CornerRadius="20"
-                        Padding="{TemplateBinding Padding}">
+                                CornerRadius="20"
+                                Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -39,183 +38,167 @@
             </Setter>
         </Style>
 
-        <!-- Стиль для CheckBox -->
         <Style x:Key="FilterCheckBoxStyle" TargetType="CheckBox">
             <Setter Property="Foreground" Value="#333333"/>
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Margin" Value="0,0,15,0"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
     </UserControl.Resources>
 
     <Grid>
-        <!-- Фон -->
         <Border Background="#FFBAD2DF" CornerRadius="25" Margin="30"/>
 
-        <!-- Popup фильтра -->
-        <Popup x:Name="FilterPopup" 
-               Placement="Bottom" 
+        <Popup x:Name="FilterPopup"
+               Placement="Bottom"
                PlacementTarget="{Binding ElementName=FilterButton}"
-               Width="280"
                AllowsTransparency="True"
-               PopupAnimation="Slide">
-            <Border Background="#FFB2B0B0" 
-                    CornerRadius="30" 
-                    BorderBrush="#E0E0E0" 
-                    BorderThickness="1">
-                <StackPanel Margin="20">
-                    <!-- Фильтр по типу действия -->
-                    <TextBlock Text="Фильтровать по типу" 
-               FontSize="14" 
-               FontWeight="Bold"
-               Foreground="#FF004AA1"
-               Margin="0,0,0,10"/>
+               PopupAnimation="Slide"
+               StaysOpen="False">
+            <Border Background="White"
+                    CornerRadius="18"
+                    BorderBrush="#D7E1E8"
+                    BorderThickness="1"
+                    Padding="18"
+                    Width="320">
+                <StackPanel>
+                    <TextBlock Text="Фильтры истории"
+                               FontSize="14"
+                               FontWeight="Bold"
+                               Foreground="#FF004AA1"
+                               Margin="0,0,0,12"/>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
-                        <CheckBox x:Name="CheckEdit" 
-                  Content="Редактирование" 
-                  Style="{StaticResource FilterCheckBoxStyle}"/>
-                        <CheckBox x:Name="CheckDelete" 
-                  Content="Удаление" 
-                  Style="{StaticResource FilterCheckBoxStyle}"/>
-                    </StackPanel>
+                    <TextBlock Text="Тип действия"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#4A4A4A"
+                               Margin="0,0,0,8"/>
+                    <WrapPanel Margin="0,0,0,14">
+                        <CheckBox x:Name="CheckCreate"
+                                  Content="Создание"
+                                  IsChecked="True"
+                                  Style="{StaticResource FilterCheckBoxStyle}"/>
+                        <CheckBox x:Name="CheckEdit"
+                                  Content="Редактирование"
+                                  IsChecked="True"
+                                  Style="{StaticResource FilterCheckBoxStyle}"/>
+                        <CheckBox x:Name="CheckDelete"
+                                  Content="Удаление"
+                                  IsChecked="True"
+                                  Style="{StaticResource FilterCheckBoxStyle}"/>
+                    </WrapPanel>
 
-                    <!-- Фильтр по дате -->
-                    <TextBlock Text="Фильтровать по дате" 
-               FontSize="14" 
-               FontWeight="Bold"
-               Foreground="#FF004AA1"
-               Margin="0,0,0,10"/>
+                    <TextBlock Text="Период выбирается через календарь справа"
+                               Foreground="#5F6B76"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,16"/>
 
-                    <TextBox x:Name="FilterDateBox" 
-             Text=""
-             Margin="0,0,0,25"
-             Padding="10,8"
-             BorderBrush="#CCCCCC"
-             BorderThickness="1"
-             FontSize="12"
-             VerticalContentAlignment="Center">
-                        <TextBox.Style>
-                            <Style TargetType="TextBox">
-                                <Style.Triggers>
-                                    <Trigger Property="Text" Value="">
-                                        <Setter Property="Foreground" Value="#888888"/>
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBox.Style>
-                    </TextBox>
-
-                    <!-- Кнопки -->
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                        <Button Content="Отмена" 
-            Click="CancelFilter_Click"
-            Style="{StaticResource FilterButtonStyle}"
-            Background="Transparent"
-            Foreground="#666666"
-            Padding="20,10"
-            Margin="0,0,10,0"/>
-
-                        <Button Content="Применить" 
-            Click="ApplyFilter_Click"
-            Style="{StaticResource FilterButtonStyle}"
-            Padding="20,10"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Сбросить"
+                                Click="ResetFilter_Click"
+                                Style="{StaticResource FilterButtonStyle}"
+                                Background="Transparent"
+                                Foreground="#666666"
+                                Padding="16,10"
+                                Margin="0,0,10,0"/>
+                        <Button Content="Применить"
+                                Click="ApplyFilter_Click"
+                                Style="{StaticResource FilterButtonStyle}"
+                                Padding="16,10"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
         </Popup>
 
-        <!-- Основной контент -->
-        <ScrollViewer Margin="30,30,30,30" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
-                <!-- Кнопка фильтра -->
-                <Grid>
+        <ScrollViewer Margin="30" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="20">
+                <Grid Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition/>
-                        <ColumnDefinition Width="50"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="История изменений"
+                               FontSize="24"
+                               FontWeight="Bold"
+                               Foreground="#FF004AA1"
+                               VerticalAlignment="Center"/>
+
                     <Button x:Name="FilterButton"
-                            Grid.Column="1" 
-                            HorizontalAlignment="Left" 
-                            Background="{x:Null}" 
-                            BorderBrush="{x:Null}" 
-                            Margin="0,0,20,0" 
-                            Width="25" 
-                            Height="25" 
+                            Grid.Column="1"
+                            HorizontalAlignment="Right"
+                            Background="{x:Null}"
+                            BorderBrush="{x:Null}"
+                            Width="25"
+                            Height="25"
                             Click="Filter_Click">
                         <Image Source="/Снимок экрана 2025-11-17 121115.png" Stretch="Fill"/>
                     </Button>
                 </Grid>
 
-                <!-- Запись 1 -->
-                <Border Background="White" CornerRadius="10" Margin="20,20,20,10" Padding="15">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="130"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="130"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="15.01.2026 14:30" 
-                                   FontSize="14" 
-                                   FontWeight="Bold" 
-                                   Foreground="#FF004AA1"
-                                   HorizontalAlignment="Left"
-                                   VerticalAlignment="Center"
-                                   TextWrapping="NoWrap"/>
-                        <TextBlock Text="Отчет по НИР 1.4 Реализация результатов НИОКР" 
-                                   Grid.Column="1"
-                                   FontSize="14" 
-                                   FontWeight="Bold" 
-                                   Foreground="#FF004AA1"
-                                   HorizontalAlignment="Left"
-                                   VerticalAlignment="Center"
-                                   TextWrapping="Wrap"
-                                   Margin="10,0,10,0"/>
-                        <TextBlock Text="Отредактировано" 
-                                   Grid.Column="2"
-                                   FontSize="14" 
-                                   FontWeight="Bold" 
-                                   Foreground="#FF004AA1"
-                                   HorizontalAlignment="Right"
-                                   VerticalAlignment="Center"
-                                   TextWrapping="NoWrap"/>
-                    </Grid>
-                </Border>
+                <TextBlock x:Name="SummaryText"
+                           Foreground="#5F6B76"
+                           Margin="0,0,0,14"
+                           TextWrapping="Wrap"/>
 
-                <!-- Запись 2 -->
-                <Border Background="White" CornerRadius="10" Margin="20,0,20,10" Padding="15">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="130"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="130"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="10.01.2026 09:15" 
-                                   FontSize="14" 
-                                   FontWeight="Bold" 
-                                   Foreground="#FF004AA1"
-                                   HorizontalAlignment="Left"
-                                   VerticalAlignment="Center"
-                                   TextWrapping="NoWrap"/>
-                        <TextBlock Text="Отчет по НИР 1.3 Темы госбюджетных НИ" 
-                                   Grid.Column="1"
-                                   FontSize="14" 
-                                   FontWeight="Bold" 
-                                   Foreground="#FF004AA1"
-                                   HorizontalAlignment="Left"
-                                   VerticalAlignment="Center"
-                                   TextWrapping="Wrap"
-                                   Margin="10,0,10,0"/>
-                        <TextBlock Text="Удалено" 
-                                   Grid.Column="2"
-                                   FontSize="14" 
-                                   FontWeight="Bold" 
-                                   Foreground="Red"
-                                   HorizontalAlignment="Right"
-                                   VerticalAlignment="Center"
-                                   TextWrapping="NoWrap"/>
-                    </Grid>
-                </Border>
+                <TextBlock x:Name="EmptyStateText"
+                           Text="История изменений пока пуста."
+                           Foreground="#5F6B76"
+                           HorizontalAlignment="Center"
+                           Margin="0,20,0,0"
+                           Visibility="Collapsed"/>
+
+                <ItemsControl x:Name="HistoryItemsControl">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="White"
+                                    CornerRadius="10"
+                                    Margin="0,0,0,10"
+                                    Padding="15">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="150"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="140"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Text="{Binding ChangedAtDisplay}"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   Foreground="#FF004AA1"
+                                                   VerticalAlignment="Center"
+                                                   TextWrapping="NoWrap"/>
+
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Location}"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   Foreground="#FF004AA1"
+                                                   VerticalAlignment="Center"
+                                                   TextWrapping="Wrap"
+                                                   Margin="12,0"/>
+
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding ActionDisplay}"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   Foreground="{Binding ActionBrush}"
+                                                   HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center"
+                                                   TextWrapping="NoWrap"/>
+                                    </Grid>
+
+                                    <TextBlock Text="{Binding Details}"
+                                               Foreground="#5F6B76"
+                                               Margin="0,8,0,0"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding DetailsVisibility}"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </StackPanel>
         </ScrollViewer>
     </Grid>

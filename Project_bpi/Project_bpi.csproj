@@ -84,88 +84,8 @@
     <Compile Include="HistoryChangesView.xaml.cs">
       <DependentUpon>HistoryChangesView.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Item11View.xaml.cs">
-      <DependentUpon>Item11View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item141_View.xaml.cs">
-      <DependentUpon>Item141_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item142_View.xaml.cs">
-      <DependentUpon>Item142_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item143_View.xaml.cs">
-      <DependentUpon>Item143_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item21_View.xaml.cs">
-      <DependentUpon>Item21_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item22_View.xaml.cs">
-      <DependentUpon>Item22_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item23_View.xaml.cs">
-      <DependentUpon>Item23_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item24_View.xaml.cs">
-      <DependentUpon>Item24_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item25_View.xaml.cs">
-      <DependentUpon>Item25_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item31_View.xaml.cs">
-      <DependentUpon>Item31_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item32_View.xaml.cs">
-      <DependentUpon>Item32_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item41_View.xaml.cs">
-      <DependentUpon>Item41_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item42_View.xaml.cs">
-      <DependentUpon>Item42_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item43_View.xaml.cs">
-      <DependentUpon>Item43_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item4_View.xaml.cs">
-      <DependentUpon>Item4_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item51a_View.xaml.cs">
-      <DependentUpon>Item51a_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item51_View.xaml.cs">
-      <DependentUpon>Item51_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item52_View.xaml.cs">
-      <DependentUpon>Item52_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item53a_View.xaml.cs">
-      <DependentUpon>Item53a_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item53b_View.xaml.cs">
-      <DependentUpon>Item53b_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item53_View.xaml.cs">
-      <DependentUpon>Item53_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item54_View.xaml.cs">
-      <DependentUpon>Item54_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item6_View.xaml.cs">
-      <DependentUpon>Item6_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item7_View.xaml.cs">
-      <DependentUpon>Item7_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item8_View.xaml.cs">
-      <DependentUpon>Item8_View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item_13View.xaml.cs">
-      <DependentUpon>Item_13View.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Item_14View.xaml.cs">
-      <DependentUpon>Item_14View.xaml</DependentUpon>
-    </Compile>
     <Compile Include="MaxHeightConverter.cs" />
+    <Compile Include="Models\HistoryEntry.cs" />
     <Compile Include="Models\PatternFile.cs" />
     <Compile Include="Models\Report.cs" />
     <Compile Include="Models\Section.cs" />
@@ -174,6 +94,7 @@
     <Compile Include="Models\Tableitem.cs" />
     <Compile Include="Models\Text.cs" />
     <Compile Include="Services\DataBase.cs" />
+    <Compile Include="Services\DocxExportService.cs" />
     <Compile Include="Spravka_View.xaml.cs">
       <DependentUpon>Spravka_View.xaml</DependentUpon>
     </Compile>
@@ -183,126 +104,11 @@
     <Compile Include="TemplatesPage.xaml.cs">
       <DependentUpon>TemplatesPage.xaml</DependentUpon>
     </Compile>
-    <Compile Include="СooperationProductionView.xaml.cs">
-      <DependentUpon>СooperationProductionView.xaml</DependentUpon>
-    </Compile>
     <Page Include="ArchivePage.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="ContractResearchView.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
     <Page Include="HistoryChangesView.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item11View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item141_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item142_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item143_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item21_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item22_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item23_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item24_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item25_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item31_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item32_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item41_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item42_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item43_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item4_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item51a_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item51_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item52_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item53a_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item53b_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item53_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item54_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item6_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item7_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item8_View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item_13View.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Item_14View.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
@@ -318,9 +124,6 @@
     <Compile Include="ArchivePage.xaml.cs">
       <DependentUpon>ArchivePage.xaml</DependentUpon>
     </Compile>
-    <Compile Include="ContractResearchView.xaml.cs">
-      <DependentUpon>ContractResearchView.xaml</DependentUpon>
-    </Compile>
     <Compile Include="MainWindow.NirSeed.cs" />
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
@@ -335,10 +138,6 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="TemplatesPage.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="СooperationProductionView.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
@@ -372,9 +171,6 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="images\logo.jpg" />
-  </ItemGroup>
-  <ItemGroup>
-    <Resource Include="images\arrow.jpg" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Снимок экрана 2025-11-17 121115.png" />

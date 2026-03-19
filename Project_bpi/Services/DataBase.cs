@@ -108,6 +108,19 @@ namespace Project_bpi.Services
                     ""Content"" TEXT NOT NULL,
                     ""Pattern_name"" TEXT NOT NULL,
                     FOREIGN KEY(""Subsection_id"") REFERENCES ""Subsection""(""id"") ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS ""ChangeHistory"" (
+                    ""id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    ""ChangedAtUtc"" TEXT NOT NULL,
+                    ""ActionType"" TEXT NOT NULL,
+                    ""EntityType"" TEXT NOT NULL,
+                    ""Location"" TEXT NOT NULL,
+                    ""Details"" TEXT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS ""SuppressedBuiltInReports"" (
+                    ""Key"" TEXT NOT NULL PRIMARY KEY
                 );";
                 using (var command = new SQLiteCommand(createTablesScript, connection))
                 {
@@ -231,6 +244,113 @@ namespace Project_bpi.Services
                 }
             }
         }
+
+        public async Task<int> AddHistoryEntry(HistoryEntry entry)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                EnableForeignKeys(connection);
+
+                const string query = @"INSERT INTO ""ChangeHistory"" (ChangedAtUtc, ActionType, EntityType, Location, Details)
+                                       VALUES (@ChangedAtUtc, @ActionType, @EntityType, @Location, @Details);
+                                       SELECT last_insert_rowid();";
+
+                using (var command = new SQLiteCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@ChangedAtUtc", entry.ChangedAtUtc.ToUniversalTime().ToString("o"));
+                    command.Parameters.AddWithValue("@ActionType", entry.ActionType ?? string.Empty);
+                    command.Parameters.AddWithValue("@EntityType", entry.EntityType ?? string.Empty);
+                    command.Parameters.AddWithValue("@Location", entry.Location ?? string.Empty);
+                    command.Parameters.AddWithValue("@Details", string.IsNullOrWhiteSpace(entry.Details)
+                        ? (object)DBNull.Value
+                        : entry.Details);
+
+                    return Convert.ToInt32(await command.ExecuteScalarAsync());
+                }
+            }
+        }
+
+        public async Task<List<HistoryEntry>> GetHistoryEntries(int limit = 500)
+        {
+            var entries = new List<HistoryEntry>();
+
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                EnableForeignKeys(connection);
+
+                const string query = @"SELECT id, ChangedAtUtc, ActionType, EntityType, Location, Details
+                                       FROM ""ChangeHistory""
+                                       ORDER BY datetime(ChangedAtUtc) DESC, id DESC
+                                       LIMIT @Limit";
+
+                using (var command = new SQLiteCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@Limit", limit);
+
+                    using (var reader = await command.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            string changedAtRaw = reader.GetString(1);
+                            DateTime changedAtUtc = DateTime.TryParse(
+                                changedAtRaw,
+                                null,
+                                System.Globalization.DateTimeStyles.RoundtripKind,
+                                out var parsedChangedAt)
+                                ? parsedChangedAt.ToUniversalTime()
+                                : DateTime.UtcNow;
+
+                            entries.Add(new HistoryEntry
+                            {
+                                Id = reader.GetInt32(0),
+                                ChangedAtUtc = changedAtUtc,
+                                ActionType = reader.GetString(2),
+                                EntityType = reader.GetString(3),
+                                Location = reader.GetString(4),
+                                Details = reader.IsDBNull(5) ? string.Empty : reader.GetString(5)
+                            });
+                        }
+                    }
+                }
+            }
+
+            return entries;
+        }
+
+        public async Task<bool> HasSuppressedBuiltInReport(string key)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                EnableForeignKeys(connection);
+
+                const string query = @"SELECT COUNT(1) FROM ""SuppressedBuiltInReports"" WHERE ""Key"" = @Key";
+                using (var command = new SQLiteCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@Key", key ?? string.Empty);
+                    return Convert.ToInt32(await command.ExecuteScalarAsync()) > 0;
+                }
+            }
+        }
+
+        public async Task AddSuppressedBuiltInReport(string key)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                EnableForeignKeys(connection);
+
+                const string query = @"INSERT OR IGNORE INTO ""SuppressedBuiltInReports"" (""Key"") VALUES (@Key)";
+                using (var command = new SQLiteCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@Key", key ?? string.Empty);
+                    await command.ExecuteNonQueryAsync();
+                }
+            }
+        }
+
         // Удаление шаблона
         public async Task DeleteFilePattern(int id)
         {

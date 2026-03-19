@@ -1,82 +1,117 @@
 ﻿<UserControl x:Class="Project_bpi.TemplatesPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="450"
+             d:DesignWidth="800"
              Background="White">
 
-    <UserControl.Resources>
-        <!-- Стиль для кнопки Скачать -->
-        <Style x:Key="EditButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#FF225CAB"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="10,5"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" 
-                                Background="{TemplateBinding Background}" 
-                                CornerRadius="10"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#FF7A9BC8"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#FF5A7BA8"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-    </UserControl.Resources>
-
     <Grid>
-        <!-- Фоновые элементы -->
-        <Border Background="#FFBAD2DF" CornerRadius="25" Margin="30" Grid.ColumnSpan="3"/>
-        <!-- Основной контент -->
-        <ScrollViewer Margin="30,30,30,30" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
-                <Border Background="White" CornerRadius="10" Margin="20,20,20,10" Padding="5,0,5,0">
-                    <Grid Margin="10,0,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition/>
-                            <ColumnDefinition Width="133"/>
-                            <ColumnDefinition Width="133"/>
-                        </Grid.ColumnDefinitions>
+        <Border Background="#FFBAD2DF" CornerRadius="25" Margin="30"/>
 
-                        <TextBlock Text="Шаблон ''Отчет по НИР''" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" Foreground="#FF004AA1"/>
+        <ScrollViewer Margin="30" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="20">
+                <TextBlock Text="Сохраненные шаблоны"
+                           FontSize="24"
+                           FontWeight="Bold"
+                           Foreground="#FF004AA1"
+                           Margin="0,0,0,10"/>
 
-                        <Button Content="Редактировать" Grid.Column="2" 
-                                Style="{StaticResource EditButtonStyle}"
-                                Margin="10,0,10,0"/>
-                    </Grid>
-                </Border>
+                <TextBlock x:Name="SummaryText"
+                           Foreground="#5F6B76"
+                           Margin="0,0,0,14"
+                           TextWrapping="Wrap"/>
 
-                <Border Background="White" CornerRadius="10" Margin="20,0,20,10" Padding="5,0,5,0">
-                    <Grid Margin="10,0,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition/>
-                            <ColumnDefinition Width="133"/>
-                            <ColumnDefinition Width="133"/>
-                        </Grid.ColumnDefinitions>
+                <TextBlock x:Name="EmptyStateText"
+                           Text="Сохраненные шаблоны пока отсутствуют."
+                           Foreground="#5F6B76"
+                           HorizontalAlignment="Center"
+                           Margin="0,20,0,0"
+                           Visibility="Collapsed"/>
 
-                        <TextBlock Text="Шаблон ''Учебный отчет''" VerticalAlignment="Center" FontSize="14" Foreground="#FF004AA1" FontWeight="Bold"/>
+                <ItemsControl x:Name="SavedTemplatesItemsControl">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="White"
+                                    CornerRadius="10"
+                                    Margin="0,0,0,10"
+                                    Padding="15">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
 
-                        <Button Content="Редактировать" Grid.Column="2" 
-                                Style="{StaticResource EditButtonStyle}"
-                                Margin="10,0"/>
-                    </Grid>
-                </Border>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   Foreground="#FF004AA1"
+                                                   TextWrapping="Wrap"/>
 
-                
+                                        <TextBlock Text="{Binding SavedAtText}"
+                                                   Margin="0,6,0,0"
+                                                   Foreground="#5F6B76"
+                                                   TextWrapping="Wrap"/>
+
+                                        <WrapPanel Margin="0,12,0,0">
+                                            <Border Background="#EEF4FF"
+                                                    CornerRadius="12"
+                                                    Padding="10,4"
+                                                    Margin="0,0,8,8">
+                                                <TextBlock Text="{Binding SectionsText}"
+                                                           Foreground="#355070"
+                                                           FontWeight="SemiBold"/>
+                                            </Border>
+
+                                            <Border Background="#EEF4FF"
+                                                    CornerRadius="12"
+                                                    Padding="10,4"
+                                                    Margin="0,0,8,8">
+                                                <TextBlock Text="{Binding TablesText}"
+                                                           Foreground="#355070"
+                                                           FontWeight="SemiBold"/>
+                                            </Border>
+                                        </WrapPanel>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1"
+                                                Margin="16,0,0,0"
+                                                Orientation="Vertical">
+                                        <Button Content="Выгрузить"
+                                                Tag="{Binding}"
+                                                Click="UnloadTemplateButton_Click"
+                                                Padding="16,8"
+                                                MinWidth="110"
+                                                Height="38"
+                                                Margin="0,0,0,8"
+                                                VerticalAlignment="Top"
+                                                Background="#EEF4FF"
+                                                Foreground="#FF004AA1"
+                                                BorderBrush="#D6E4FF"
+                                                FontWeight="SemiBold"
+                                                Cursor="Hand"/>
+
+                                        <Button Content="Удалить"
+                                                Tag="{Binding}"
+                                                Click="DeleteTemplateButton_Click"
+                                                Padding="16,8"
+                                                MinWidth="110"
+                                                Height="38"
+                                                VerticalAlignment="Top"
+                                                Background="#FFF2F2"
+                                                Foreground="#C1121F"
+                                                BorderBrush="#F6C9CF"
+                                                FontWeight="SemiBold"
+                                                Cursor="Hand"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </StackPanel>
         </ScrollViewer>
     </Grid>

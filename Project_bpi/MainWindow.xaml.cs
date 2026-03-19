@@ -11,6 +11,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Globalization;
+using Microsoft.Win32;
 using Project_bpi.Models;
 using Project_bpi.Services;
 
@@ -20,9 +21,16 @@ namespace Project_bpi
     {
         public DataBase DB = new DataBase();
         private const string TemplateDatabaseFolderName = "TemplateDatabases";
+        private const string SavedTemplatesFolderName = "SavedTemplates";
+        private const string ArchivedReportsFolderName = "ArchivedReports";
         private const string SectionContentSubSectionTitle = "__section_content__";
         private const string StudyReportTitle = "Учебный отчет";
         private const string NirReportTitle = "Отчет по НИР";
+        private const string StudyReportSuppressionKey = "builtin:study_report";
+        private const string NirReportSuppressionKey = "builtin:nir_report";
+        private const string HistoryActionCreate = "create";
+        private const string HistoryActionEdit = "edit";
+        private const string HistoryActionDelete = "delete";
         private sealed class StudyReportSubSectionSeed
         {
             public int Number { get; set; }
@@ -197,83 +205,12 @@ namespace Project_bpi
             DB.InitializeDatabase();
             InitializeComponent();
             InitializeDateRange();
-            InitializeMenuHierarchy();
-            HideStaticNirReportMenu();
-            HideStaticStudyReportMenu();
             Loaded += async (sender, args) =>
             {
                 await EnsureNirReportInDatabaseAsync();
                 await EnsureStudyReportInDatabaseAsync();
                 await LoadSavedTemplatesAsync();
             };
-        }
-
-        private void InitializeMenuHierarchy()
-        {
-            // 1-й уровень → корневой заголовок НИР
-            parents[NIR_Header] = null; // корень
-            parents[Section1_Header] = NIR_Header;
-            parents[Item_Title] = NIR_Header;
-            parents[Section2_Header] = NIR_Header;
-            parents[Section3_Header] = NIR_Header;
-            parents[Section4_Header] = NIR_Header;
-            parents[Section5_Header] = NIR_Header;
-            parents[Section6_Header] = NIR_Header;
-            parents[Section7_Header] = NIR_Header;
-            parents[Section8_Header] = NIR_Header;
-            parents[Section9_Header] = NIR_Header;
-
-            // 2-й уровень → Раздел 1
-            parents[Item_11] = Section1_Header;
-            parents[Item_12] = Section1_Header;
-            parents[Item_13] = Section1_Header;
-            parents[Item_14] = Section1_Header;
-            parents[Item_15] = Section1_Header;
-
-            // 2-й уровень → Раздел 2
-            parents[Item_21] = Section2_Header;
-            parents[Item_22] = Section2_Header;
-            parents[Item_23] = Section2_Header;
-            parents[Item_24] = Section2_Header;
-            parents[Item_25] = Section2_Header;
-
-            // 2-й уровень → Раздел 3
-            parents[Item_31] = Section3_Header;
-            parents[Item_32] = Section3_Header;
-
-            // 2-й уровень → Раздел 4
-            parents[Item_41] = Section4_Header;
-            parents[Item_42] = Section4_Header;
-            parents[Item_43] = Section4_Header;
-
-            // 2-й уровень → Раздел 5
-            parents[Item_51] = Section5_Header;
-            parents[Item_52] = Section5_Header;
-            parents[Item_53] = Section5_Header;
-            parents[Item_54] = Section5_Header;
-
-            // 3-й уровень → Подразделы внутри "Реализуемые стартап-проекты"
-            parents[Item_51a] = Item_51;
-
-            // 3-й уровень → Подразделы внутри "Научные конференции"
-            parents[Item_53a] = Item_53;
-            parents[Item_53b] = Item_53;
-            // Учебный отчет → корень
-            parents[Study_Header] = null;
-
-            // Раздел 14 → внутри Учебного отчета
-            parents[Section14_Header] = Study_Header;
-
-            // Подразделы 14.x
-            parents[Item_141] = Section14_Header;
-            parents[Item_142] = Section14_Header;
-            parents[Item_143] = Section14_Header;
-        }
-
-        private void HideStaticStudyReportMenu()
-        {
-            Study_Header.Visibility = Visibility.Collapsed;
-            Study_Menu.Visibility = Visibility.Collapsed;
         }
 
         private async void AddTemplateButton_Click(object sender, RoutedEventArgs e)
@@ -304,6 +241,11 @@ namespace Project_bpi
             try
             {
                 var entry = await CreateTemplateDatabaseAsync(templateTitle);
+                await LogHistoryAsync(
+                    HistoryActionCreate,
+                    "template",
+                    BuildTemplateHistoryLocation(entry),
+                    "Создан шаблон");
                 ActivateMenuItem(entry.HeaderBorder, false);
             }
             catch (Exception ex)
@@ -501,6 +443,103 @@ namespace Project_bpi
             return DB.DatabasePath;
         }
 
+        private async Task LogHistoryAsync(string actionType, string entityType, string location, string details = null)
+        {
+            if (string.IsNullOrWhiteSpace(location))
+            {
+                return;
+            }
+
+            try
+            {
+                var historyDatabase = new DataBase(GetSharedTemplateDatabasePath());
+                historyDatabase.InitializeDatabase(false);
+                await historyDatabase.AddHistoryEntry(new HistoryEntry
+                {
+                    ChangedAtUtc = DateTime.UtcNow,
+                    ActionType = actionType,
+                    EntityType = entityType ?? string.Empty,
+                    Location = location.Trim(),
+                    Details = details?.Trim()
+                });
+            }
+            catch
+            {
+                // История не должна ломать основную работу приложения.
+            }
+        }
+
+        private string BuildSectionHistoryTitle(Section section)
+        {
+            if (section == null)
+            {
+                return string.Empty;
+            }
+
+            string sectionContentTitle = GetSectionContentTitle(section);
+            if (!string.IsNullOrWhiteSpace(sectionContentTitle))
+            {
+                return sectionContentTitle;
+            }
+
+            return BuildSectionMenuTitle(section);
+        }
+
+        private string BuildTemplateHistoryLocation(DynamicTemplateEntry templateEntry)
+        {
+            return templateEntry?.DisplayTitle?.Trim() ?? "Шаблон";
+        }
+
+        private string BuildSectionHistoryLocation(DynamicTemplateEntry templateEntry, Section section)
+        {
+            return $"{BuildTemplateHistoryLocation(templateEntry)} / {BuildSectionHistoryTitle(section)}";
+        }
+
+        private string BuildSubSectionHistoryLocation(DynamicTemplateEntry templateEntry, SubSection subsection)
+        {
+            if (subsection == null)
+            {
+                return BuildTemplateHistoryLocation(templateEntry);
+            }
+
+            var parts = new Stack<string>();
+            var current = subsection;
+            while (current != null)
+            {
+                if (!IsSectionContentSubSection(current) && !string.IsNullOrWhiteSpace(current.Title))
+                {
+                    parts.Push(current.Title.Trim());
+                }
+
+                current = current.ParentSubsection;
+            }
+
+            string sectionPart = BuildSectionHistoryTitle(subsection.Section);
+            string subSectionPart = string.Join(" / ", parts);
+
+            if (string.IsNullOrWhiteSpace(subSectionPart))
+            {
+                return $"{BuildTemplateHistoryLocation(templateEntry)} / {sectionPart}";
+            }
+
+            return $"{BuildTemplateHistoryLocation(templateEntry)} / {sectionPart} / {subSectionPart}";
+        }
+
+        private string BuildTableHistoryLocation(DynamicTemplateEntry templateEntry, SubSection subsection, Table table)
+        {
+            string tableTitle = string.IsNullOrWhiteSpace(table?.Title) ? "Таблица" : table.Title.Trim();
+            string ownerLocation = subsection != null && IsSectionContentSubSection(subsection)
+                ? BuildSectionHistoryLocation(templateEntry, subsection.Section)
+                : BuildSubSectionHistoryLocation(templateEntry, subsection);
+
+            return $"{ownerLocation} / {tableTitle}";
+        }
+
+        private string BuildHistoryDetails(params string[] fragments)
+        {
+            return string.Join(", ", fragments.Where(fragment => !string.IsNullOrWhiteSpace(fragment)));
+        }
+
         private bool IsSharedTemplateDatabase(string databasePath)
         {
             return string.Equals(
@@ -525,6 +564,546 @@ namespace Project_bpi
             }
 
             return folderPath;
+        }
+
+        private string GetSavedTemplatesFolderPath()
+        {
+            string folderPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, SavedTemplatesFolderName);
+            if (!Directory.Exists(folderPath))
+            {
+                Directory.CreateDirectory(folderPath);
+            }
+
+            return folderPath;
+        }
+
+        private string GetArchivedReportsFolderPath()
+        {
+            string folderPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ArchivedReportsFolderName);
+            if (!Directory.Exists(folderPath))
+            {
+                Directory.CreateDirectory(folderPath);
+            }
+
+            return folderPath;
+        }
+
+        private string BuildSavedTemplateSnapshotPath(string templateTitle)
+        {
+            string safeTitle = Regex.Replace(templateTitle ?? "Шаблон", @"[^\w\dа-яА-Я_-]+", "_").Trim('_');
+            if (string.IsNullOrWhiteSpace(safeTitle))
+            {
+                safeTitle = "template";
+            }
+
+            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            return System.IO.Path.Combine(GetSavedTemplatesFolderPath(), $"{safeTitle}_{timestamp}.db");
+        }
+
+        private string BuildArchivedReportPath(string templateTitle)
+        {
+            string safeTitle = Regex.Replace(templateTitle ?? "Отчет", @"[^\w\dа-яА-Я_-]+", "_").Trim('_');
+            if (string.IsNullOrWhiteSpace(safeTitle))
+            {
+                safeTitle = "report";
+            }
+
+            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            return System.IO.Path.Combine(GetArchivedReportsFolderPath(), $"{safeTitle}_{timestamp}.db");
+        }
+
+        private string BuildRestoredTemplateDatabasePath(string templateTitle)
+        {
+            string safeTitle = Regex.Replace(templateTitle ?? "Шаблон", @"[^\w\dа-яА-Я_-]+", "_").Trim('_');
+            if (string.IsNullOrWhiteSpace(safeTitle))
+            {
+                safeTitle = "template";
+            }
+
+            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            return System.IO.Path.Combine(GetTemplateDatabaseFolderPath(), $"{safeTitle}_{timestamp}.db");
+        }
+
+        private async Task RestoreSavedTemplateSnapshotAsync(string snapshotPath)
+        {
+            if (string.IsNullOrWhiteSpace(snapshotPath) || !File.Exists(snapshotPath))
+            {
+                MessageBox.Show("Сохраненный шаблон не найден.", "Шаблоны",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                var snapshotDatabase = new DataBase(snapshotPath);
+                snapshotDatabase.InitializeDatabase(false);
+
+                var snapshotReports = await snapshotDatabase.GetAllReports();
+                var snapshotReportInfo = snapshotReports.FirstOrDefault();
+                if (snapshotReportInfo == null)
+                {
+                    MessageBox.Show("Не удалось прочитать сохраненный шаблон.", "Шаблоны",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                Report snapshotReport = await snapshotDatabase.GetFullReport(snapshotReportInfo.Id);
+                string restoredPath = BuildRestoredTemplateDatabasePath(snapshotReport?.Title);
+
+                File.Copy(snapshotPath, restoredPath, false);
+
+                var restoredDatabase = new DataBase(restoredPath);
+                restoredDatabase.InitializeDatabase(false);
+
+                var restoredReports = await restoredDatabase.GetAllReports();
+                foreach (var restoredReportInfo in restoredReports)
+                {
+                    var restoredReport = await restoredDatabase.GetFullReport(restoredReportInfo.Id);
+                    if (restoredReport?.PatternFile == null)
+                    {
+                        continue;
+                    }
+
+                    restoredReport.PatternFile.Path = restoredPath;
+                    await restoredDatabase.UpdateFilePattern(restoredReport.PatternFile);
+                }
+
+                await LoadTemplatesFromDatabaseAsync(restoredPath);
+
+                var loadedEntry = dynamicTemplates.Values.FirstOrDefault(entry =>
+                    string.Equals(entry.DatabasePath, restoredPath, StringComparison.OrdinalIgnoreCase));
+                if (loadedEntry != null)
+                {
+                    ActivateMenuItem(loadedEntry.HeaderBorder, false);
+                }
+
+                await LogHistoryAsync(
+                    HistoryActionCreate,
+                    "template_restore",
+                    snapshotReport?.Title?.Trim() ?? "Шаблон",
+                    "Выгружен сохраненный шаблон в меню навигации");
+
+                MessageBox.Show(
+                    $"Шаблон \"{snapshotReport?.Title}\" выгружен в меню навигации.",
+                    "Шаблоны",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось выгрузить шаблон:{Environment.NewLine}{ex.Message}",
+                    "Шаблоны",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private async Task DeleteSavedTemplateSnapshotAsync(string snapshotPath)
+        {
+            if (string.IsNullOrWhiteSpace(snapshotPath) || !File.Exists(snapshotPath))
+            {
+                return;
+            }
+
+            try
+            {
+                string templateTitle = "Шаблон";
+                var snapshotDatabase = new DataBase(snapshotPath);
+                snapshotDatabase.InitializeDatabase(false);
+
+                var reports = await snapshotDatabase.GetAllReports();
+                var reportInfo = reports.FirstOrDefault();
+                if (reportInfo != null)
+                {
+                    templateTitle = reportInfo.Title;
+                }
+
+                File.Delete(snapshotPath);
+
+                await LogHistoryAsync(
+                    HistoryActionDelete,
+                    "template_snapshot",
+                    templateTitle,
+                    "Удален сохраненный шаблон из вкладки «Шаблоны»");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось удалить сохраненный шаблон:{Environment.NewLine}{ex.Message}",
+                    "Шаблоны",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private async Task<Report> CloneReportToSnapshotAsync(string sourceDatabasePath, int reportId, string snapshotPath)
+        {
+            var sourceDatabase = new DataBase(sourceDatabasePath);
+            sourceDatabase.InitializeDatabase(false);
+
+            Report sourceReport = await sourceDatabase.GetFullReport(reportId);
+            if (sourceReport == null)
+            {
+                return null;
+            }
+
+            var snapshotDatabase = new DataBase(snapshotPath);
+            snapshotDatabase.InitializeDatabase(false);
+
+            int snapshotPatternId = await snapshotDatabase.AddFilePattern(new PatternFile
+            {
+                Title = sourceReport.Title,
+                Year = sourceReport.Year,
+                Path = snapshotPath
+            });
+
+            int snapshotReportId = await snapshotDatabase.AddReport(new Report
+            {
+                Title = sourceReport.Title,
+                Year = sourceReport.Year,
+                PattarnId = snapshotPatternId
+            });
+
+            foreach (var section in sourceReport.Sections.OrderBy(section => section.Number).ThenBy(section => section.Id))
+            {
+                int snapshotSectionId = await snapshotDatabase.AddSection(new Section
+                {
+                    ReportId = snapshotReportId,
+                    Number = section.Number,
+                    Title = section.Title
+                });
+
+                await CloneSubSectionsAsync(
+                    snapshotDatabase,
+                    snapshotSectionId,
+                    section.SubSections?.OrderBy(item => item.Number).ThenBy(item => item.Id) ?? Enumerable.Empty<SubSection>(),
+                    null);
+            }
+
+            return sourceReport;
+        }
+
+        private async Task SaveTemplateSnapshotAsync(Border ownerBorder)
+        {
+            if (ownerBorder == null || !dynamicTemplates.TryGetValue(ownerBorder, out var templateEntry))
+            {
+                return;
+            }
+
+            string snapshotPath = BuildSavedTemplateSnapshotPath(templateEntry.DisplayTitle);
+
+            try
+            {
+                Report sourceReport = await CloneReportToSnapshotAsync(
+                    templateEntry.DatabasePath,
+                    templateEntry.ReportId,
+                    snapshotPath);
+                if (sourceReport == null)
+                {
+                    MessageBox.Show("Не удалось загрузить шаблон для сохранения.", "Шаблоны",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                await LogHistoryAsync(
+                    HistoryActionCreate,
+                    "template_snapshot",
+                    BuildTemplateHistoryLocation(templateEntry),
+                    "Сохранен снимок шаблона во вкладку «Шаблоны»");
+
+                if (MainContentControl.Content is TemplatesPage templatesPage)
+                {
+                    await templatesPage.ReloadAsync();
+                }
+
+                MessageBox.Show($"Шаблон \"{templateEntry.DisplayTitle}\" сохранен во вкладку «Шаблоны».",
+                    "Шаблоны", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Не удалось сохранить шаблон:{Environment.NewLine}{ex.Message}",
+                    "Шаблоны", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private DynamicTemplateEntry GetCurrentTemplateEntry()
+        {
+            if (currentActive == null)
+            {
+                return null;
+            }
+
+            if (dynamicTemplates.TryGetValue(currentActive, out var templateEntry))
+            {
+                return templateEntry;
+            }
+
+            if (dynamicSections.TryGetValue(currentActive, out var section))
+            {
+                return FindTemplateEntryForSection(section);
+            }
+
+            if (dynamicSubSections.TryGetValue(currentActive, out var subsection))
+            {
+                return FindTemplateEntryForSubSection(subsection);
+            }
+
+            return null;
+        }
+
+        private async void GenerateFinalReportButton_Click(object sender, RoutedEventArgs e)
+        {
+            var templateEntry = GetCurrentTemplateEntry();
+            if (templateEntry == null)
+            {
+                MessageBox.Show("Выберите отчет, который нужно перенести в архив.", "Архив",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            string archivePath = BuildArchivedReportPath(templateEntry.DisplayTitle);
+
+            try
+            {
+                Report archivedReport = await CloneReportToSnapshotAsync(
+                    templateEntry.DatabasePath,
+                    templateEntry.ReportId,
+                    archivePath);
+                if (archivedReport == null)
+                {
+                    MessageBox.Show("Не удалось сформировать итоговый отчет.", "Архив",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                await RemoveTemplateSourceAsync(templateEntry, archivedReport);
+                RemoveTemplateFromMenu(templateEntry);
+                MainContentControl.Content = CreateDefaultContent();
+                currentDynamicEditorBorder = null;
+
+                await LogHistoryAsync(
+                    HistoryActionCreate,
+                    "archive_report",
+                    archivedReport.Title,
+                    "Отчет перенесен в архив");
+
+                MessageBox.Show(
+                    $"Отчет \"{archivedReport.Title}\" перенесен в архив.",
+                    "Архив",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось перенести отчет в архив:{Environment.NewLine}{ex.Message}",
+                    "Архив",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private async Task RemoveTemplateSourceAsync(DynamicTemplateEntry templateEntry, Report sourceReport)
+        {
+            if (templateEntry == null || sourceReport == null)
+            {
+                return;
+            }
+
+            var database = new DataBase(templateEntry.DatabasePath);
+            database.InitializeDatabase(false);
+
+            if (IsSharedTemplateDatabase(templateEntry.DatabasePath))
+            {
+                if (string.Equals(sourceReport.Title, NirReportTitle, StringComparison.Ordinal))
+                {
+                    await database.AddSuppressedBuiltInReport(NirReportSuppressionKey);
+                }
+                else if (string.Equals(sourceReport.Title, StudyReportTitle, StringComparison.Ordinal))
+                {
+                    await database.AddSuppressedBuiltInReport(StudyReportSuppressionKey);
+                }
+
+                await database.DeleteFilePattern(sourceReport.PattarnId);
+                return;
+            }
+
+            var reports = await database.GetAllReports();
+            if (reports.Count <= 1)
+            {
+                if (File.Exists(templateEntry.DatabasePath))
+                {
+                    File.Delete(templateEntry.DatabasePath);
+                }
+
+                return;
+            }
+
+            await database.DeleteFilePattern(sourceReport.PattarnId);
+        }
+
+        private async Task DownloadArchivedReportAsync(string archivePath)
+        {
+            if (string.IsNullOrWhiteSpace(archivePath) || !File.Exists(archivePath))
+            {
+                MessageBox.Show("Архивный отчет не найден.", "Архив",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                var database = new DataBase(archivePath);
+                database.InitializeDatabase(false);
+
+                var reports = await database.GetAllReports();
+                var reportInfo = reports.FirstOrDefault();
+                if (reportInfo == null)
+                {
+                    MessageBox.Show("Не удалось загрузить архивный отчет.", "Архив",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var report = await database.GetFullReport(reportInfo.Id);
+                if (report == null)
+                {
+                    MessageBox.Show("Не удалось загрузить архивный отчет.", "Архив",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var saveDialog = new SaveFileDialog
+                {
+                    Title = "Сохранить итоговый отчет",
+                    Filter = "Документ Word (*.docx)|*.docx",
+                    FileName = $"{SanitizeFileName(report.Title)}.docx",
+                    DefaultExt = ".docx",
+                    AddExtension = true
+                };
+
+                if (saveDialog.ShowDialog() != true)
+                {
+                    return;
+                }
+
+                DocxExportService.ExportReport(report, saveDialog.FileName);
+
+                await LogHistoryAsync(
+                    HistoryActionCreate,
+                    "archive_download",
+                    report.Title,
+                    "Архивный отчет выгружен в формате DOCX");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось скачать архивный отчет:{Environment.NewLine}{ex.Message}",
+                    "Архив",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private async Task DeleteArchivedReportAsync(string archivePath)
+        {
+            if (string.IsNullOrWhiteSpace(archivePath) || !File.Exists(archivePath))
+            {
+                return;
+            }
+
+            try
+            {
+                string title = "Отчет";
+                var database = new DataBase(archivePath);
+                database.InitializeDatabase(false);
+                var reports = await database.GetAllReports();
+                if (reports.Any())
+                {
+                    title = reports.First().Title;
+                }
+
+                File.Delete(archivePath);
+
+                await LogHistoryAsync(
+                    HistoryActionDelete,
+                    "archive_report",
+                    title,
+                    "Архивный отчет удален");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось удалить архивный отчет:{Environment.NewLine}{ex.Message}",
+                    "Архив",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private string SanitizeFileName(string name)
+        {
+            string sanitized = Regex.Replace(name ?? "report", $"[{Regex.Escape(new string(Path.GetInvalidFileNameChars()))}]", "_");
+            return string.IsNullOrWhiteSpace(sanitized) ? "report" : sanitized.Trim();
+        }
+
+        private async Task CloneSubSectionsAsync(
+            DataBase targetDatabase,
+            int targetSectionId,
+            IEnumerable<SubSection> sourceSubSections,
+            int? targetParentSubSectionId)
+        {
+            foreach (var sourceSubSection in sourceSubSections ?? Enumerable.Empty<SubSection>())
+            {
+                int snapshotSubSectionId = await targetDatabase.AddSubsection(new SubSection
+                {
+                    SectionId = targetSectionId,
+                    ParentSubsectionId = targetParentSubSectionId,
+                    Number = sourceSubSection.Number,
+                    Title = sourceSubSection.Title
+                });
+
+                foreach (var text in sourceSubSection.Texts?.OrderBy(item => item.Id) ?? Enumerable.Empty<Text>())
+                {
+                    await targetDatabase.AddText(new Text
+                    {
+                        SubsectionId = snapshotSubSectionId,
+                        Content = text.Content,
+                        PatternName = text.PatternName
+                    });
+                }
+
+                foreach (var table in sourceSubSection.Tables?.OrderBy(item => item.Id) ?? Enumerable.Empty<Table>())
+                {
+                    int snapshotTableId = await targetDatabase.AddTable(new Table
+                    {
+                        Title = table.Title,
+                        SubsectionId = snapshotSubSectionId,
+                        PatternName = table.PatternName
+                    });
+
+                    foreach (var cell in table.TableItems?.OrderBy(item => item.IsHeader ? 0 : 1).ThenBy(item => item.Row).ThenBy(item => item.Column) ?? Enumerable.Empty<TableItem>())
+                    {
+                        await targetDatabase.AddTableItem(new TableItem
+                        {
+                            TableId = snapshotTableId,
+                            Row = cell.Row,
+                            Column = cell.Column,
+                            Header = cell.Header,
+                            ColSpan = cell.ColSpan,
+                            RowSpan = cell.RowSpan,
+                            IsHeader = cell.IsHeader
+                        });
+                    }
+                }
+
+                await CloneSubSectionsAsync(
+                    targetDatabase,
+                    targetSectionId,
+                    sourceSubSection.SubSections?.OrderBy(item => item.Number).ThenBy(item => item.Id) ?? Enumerable.Empty<SubSection>(),
+                    snapshotSubSectionId);
+            }
         }
 
         private void RemoveTemplateFromMenu(DynamicTemplateEntry entry)
@@ -595,6 +1174,11 @@ namespace Project_bpi
         {
             var database = new DataBase(GetSharedTemplateDatabasePath());
             database.InitializeDatabase(false);
+
+            if (await database.HasSuppressedBuiltInReport(StudyReportSuppressionKey))
+            {
+                return;
+            }
 
             var reports = await database.GetAllReports();
             var existingStudyReport = reports.FirstOrDefault(report =>
@@ -741,15 +1325,28 @@ namespace Project_bpi
 
             var editButton = CreateDynamicEditButton(border);
             var deleteButton = CreateDynamicDeleteButton(border);
-            var actionsPanel = CreateDynamicActionsPanel(editButton, deleteButton);
+            var saveButton = string.Equals(tag, "main", StringComparison.Ordinal)
+                ? CreateDynamicSaveButton(border)
+                : null;
+            var actionsPanel = saveButton != null
+                ? CreateDynamicActionsPanel(saveButton, editButton, deleteButton)
+                : CreateDynamicActionsPanel(editButton, deleteButton);
 
             border.MouseEnter += (sender, args) =>
             {
+                if (saveButton != null)
+                {
+                    saveButton.Visibility = Visibility.Visible;
+                }
                 editButton.Visibility = Visibility.Visible;
                 deleteButton.Visibility = Visibility.Visible;
             };
             border.MouseLeave += (sender, args) =>
             {
+                if (saveButton != null)
+                {
+                    saveButton.Visibility = Visibility.Hidden;
+                }
                 editButton.Visibility = Visibility.Hidden;
                 deleteButton.Visibility = Visibility.Hidden;
             };
@@ -963,6 +1560,32 @@ namespace Project_bpi
             };
         }
 
+        private Viewbox CreateDynamicSaveIcon()
+        {
+            var canvas = new Canvas
+            {
+                Width = 24,
+                Height = 24
+            };
+
+            Brush iconBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#758CA3"));
+
+            canvas.Children.Add(new System.Windows.Shapes.Path
+            {
+                Data = Geometry.Parse("M5 0V7C5 7.55228 5.44772 8 6 8H16C16.5523 8 17 7.55228 17 7V0H18L22 5V21C22 22.6569 20.6569 24 19 24H3C1.34315 24 0 22.6569 0 21V3C0 1.34315 1.34315 0 3 0H5zM7 0H15V6H7V0zM6.2 15H15.8C16.4627 15 17 14.5523 17 14C17 13.4477 16.4627 13 15.8 13H6.2C5.53726 13 5 13.4477 5 14C5 14.5523 5.53726 15 6.2 15zM6.2 19H15.8C16.4627 19 17 18.5523 17 18C17 17.4477 16.4627 17 15.8 17H6.2C5.53726 17 5 17.4477 5 18C5 18.5523 5.53726 19 6.2 19z"),
+                Fill = iconBrush,
+                Stretch = Stretch.Fill
+            });
+
+            return new Viewbox
+            {
+                Width = 12,
+                Height = 12,
+                Stretch = Stretch.Uniform,
+                Child = canvas
+            };
+        }
+
         private async Task DeleteDynamicItemAsync(Border ownerBorder)
         {
             if (ownerBorder == null)
@@ -1152,7 +1775,7 @@ namespace Project_bpi
             {
                 if (!editMode && !HasSectionDisplayContent(section))
                 {
-                    MainContentControl.Content = null;
+                    MainContentControl.Content = CreateDefaultContent();
                     currentDynamicEditorBorder = null;
                     return true;
                 }
@@ -1166,6 +1789,13 @@ namespace Project_bpi
 
             if (dynamicSubSections.TryGetValue(menuItem, out var subsection))
             {
+                if (!editMode && !HasSubSectionDisplayContent(subsection))
+                {
+                    MainContentControl.Content = CreateDefaultContent();
+                    currentDynamicEditorBorder = null;
+                    return true;
+                }
+
                 MainContentControl.Content = editMode
                     ? CreateSubSectionContent(subsection)
                     : CreateSubSectionPreviewContent(subsection);
@@ -2222,6 +2852,20 @@ namespace Project_bpi
             return button;
         }
 
+        private Button CreateDynamicSaveButton(Border ownerBorder)
+        {
+            var button = CreateDynamicIconButton("Сохранить в шаблоны");
+            button.Content = CreateDynamicSaveIcon();
+            button.PreviewMouseLeftButtonDown += (sender, args) => args.Handled = true;
+            button.PreviewMouseLeftButtonUp += async (sender, args) =>
+            {
+                args.Handled = true;
+                await SaveTemplateSnapshotAsync(ownerBorder);
+            };
+
+            return button;
+        }
+
         private UIElement CreateTableColumnFiltersRow(TableEditorContext context, int columnCount)
         {
             var grid = new Grid
@@ -2677,6 +3321,19 @@ namespace Project_bpi
             var contentSubSection = GetSectionContentSubSection(section);
             bool hasText = !string.IsNullOrWhiteSpace(GetSectionRawContent(section));
             bool hasTables = contentSubSection?.Tables != null && contentSubSection.Tables.Any();
+            return hasText || hasTables;
+        }
+
+        private bool HasSubSectionDisplayContent(SubSection subsection)
+        {
+            if (subsection == null)
+            {
+                return false;
+            }
+
+            bool hasText = subsection.Texts != null && subsection.Texts.Any(text =>
+                !string.IsNullOrWhiteSpace(text?.Content));
+            bool hasTables = subsection.Tables != null && subsection.Tables.Any();
             return hasText || hasTables;
         }
 
@@ -3522,6 +4179,11 @@ namespace Project_bpi
                 Title = GetDefaultSectionTitle(nextNumber)
             });
 
+            await LogHistoryAsync(
+                HistoryActionCreate,
+                "section",
+                $"{BuildTemplateHistoryLocation(templateEntry)} / {GetDefaultSectionTitle(nextNumber)}",
+                "Создан раздел");
             await RefreshTemplateEntryAsync(templateEntry, sectionId: sectionId);
         }
 
@@ -3593,6 +4255,21 @@ namespace Project_bpi
                 Title = dialog.TemplateName.Trim()
             });
 
+            var createdSubSection = new SubSection
+            {
+                Id = subsectionId,
+                Section = section,
+                SectionId = section.Id,
+                ParentSubsection = parentSubSection,
+                ParentSubsectionId = parentSubSection?.Id,
+                Number = nextNumber,
+                Title = dialog.TemplateName.Trim()
+            };
+            await LogHistoryAsync(
+                HistoryActionCreate,
+                "subsection",
+                BuildSubSectionHistoryLocation(templateEntry, createdSubSection),
+                parentSubSection == null ? "Создан подраздел" : "Создан вложенный подраздел");
             await RefreshTemplateEntryAsync(templateEntry, subsectionId: subsectionId);
         }
 
@@ -3650,6 +4327,9 @@ namespace Project_bpi
                 return;
             }
 
+            string previousTitle = context.Section.Title?.Trim() ?? string.Empty;
+            string previousContent = GetSectionRawContent(context.Section)?.Trim() ?? string.Empty;
+
             foreach (var tableContext in context.TableEditors)
             {
                 if (!await SaveTableAsync(tableContext, false))
@@ -3692,6 +4372,19 @@ namespace Project_bpi
                 }
             }
 
+            bool titleChanged = !string.Equals(previousTitle, title, StringComparison.Ordinal);
+            bool contentChanged = !string.Equals(previousContent, content, StringComparison.Ordinal);
+            if (titleChanged || contentChanged)
+            {
+                await LogHistoryAsync(
+                    HistoryActionEdit,
+                    "section",
+                    BuildSectionHistoryLocation(context.Template, context.Section),
+                    BuildHistoryDetails(
+                        titleChanged ? "обновлено название" : null,
+                        contentChanged ? "обновлен текст" : null));
+            }
+
             await RefreshTemplateEntryAsync(context.Template, sectionId: context.Section.Id, editMode: false);
         }
 
@@ -3709,6 +4402,11 @@ namespace Project_bpi
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
+
+            string previousTitle = context.SubSection.Title?.Trim() ?? string.Empty;
+            string previousContent = context.SubSection.Texts != null && context.SubSection.Texts.Any()
+                ? context.SubSection.Texts.First().Content?.Trim() ?? string.Empty
+                : string.Empty;
 
             foreach (var tableContext in context.TableEditors)
             {
@@ -3747,6 +4445,19 @@ namespace Project_bpi
                 await database.UpdateText(existingText);
             }
 
+            bool titleChanged = !string.Equals(previousTitle, title, StringComparison.Ordinal);
+            bool contentChanged = !string.Equals(previousContent, content, StringComparison.Ordinal);
+            if (titleChanged || contentChanged)
+            {
+                await LogHistoryAsync(
+                    HistoryActionEdit,
+                    "subsection",
+                    BuildSubSectionHistoryLocation(context.Template, context.SubSection),
+                    BuildHistoryDetails(
+                        titleChanged ? "обновлено название" : null,
+                        contentChanged ? "обновлен текст" : null));
+            }
+
             await RefreshTemplateEntryAsync(context.Template, subsectionId: context.SubSection.Id, editMode: false);
         }
 
@@ -3777,6 +4488,12 @@ namespace Project_bpi
                 return;
             }
 
+            string previousTitle = templateEntry.DisplayTitle?.Trim() ?? string.Empty;
+            if (string.Equals(previousTitle, newTitle, StringComparison.Ordinal))
+            {
+                return;
+            }
+
             var database = new DataBase(templateEntry.DatabasePath);
             templateEntry.Report.Title = newTitle;
             templateEntry.Report.PatternFile.Title = newTitle;
@@ -3785,6 +4502,11 @@ namespace Project_bpi
             await database.UpdateFilePattern(templateEntry.Report.PatternFile);
 
             templateEntry.DisplayTitle = newTitle;
+            await LogHistoryAsync(
+                HistoryActionEdit,
+                "template",
+                BuildTemplateHistoryLocation(templateEntry),
+                $"переименован из \"{previousTitle}\"");
             await RefreshTemplateEntryAsync(templateEntry);
         }
 
@@ -3845,6 +4567,11 @@ namespace Project_bpi
                     File.Delete(templateEntry.DatabasePath);
                 }
 
+                await LogHistoryAsync(
+                    HistoryActionDelete,
+                    "template",
+                    BuildTemplateHistoryLocation(templateEntry),
+                    "Удален шаблон");
                 RemoveTemplateFromMenu(templateEntry);
             }
             catch (Exception ex)
@@ -3880,6 +4607,11 @@ namespace Project_bpi
 
             var database = new DataBase(templateEntry.DatabasePath);
             await database.DeleteSection(section.Id);
+            await LogHistoryAsync(
+                HistoryActionDelete,
+                "section",
+                BuildSectionHistoryLocation(templateEntry, section),
+                "Удален раздел");
             await RefreshTemplateEntryAsync(templateEntry);
         }
 
@@ -3898,6 +4630,11 @@ namespace Project_bpi
 
             var database = new DataBase(templateEntry.DatabasePath);
             await database.DeleteSubsection(subsection.Id);
+            await LogHistoryAsync(
+                HistoryActionDelete,
+                "subsection",
+                BuildSubSectionHistoryLocation(templateEntry, subsection),
+                subsection.ParentSubsectionId.HasValue ? "Удален вложенный подраздел" : "Удален подраздел");
 
             if (subsection.ParentSubsectionId.HasValue)
             {
@@ -3971,6 +4708,11 @@ namespace Project_bpi
                 IsHeader = true
             });
 
+            await LogHistoryAsync(
+                HistoryActionCreate,
+                "table",
+                BuildTableHistoryLocation(templateEntry, targetSubSection, new Table { Title = dialog.TemplateName.Trim() }),
+                "Создана таблица");
             if (refreshSectionId.HasValue)
             {
                 await RefreshTemplateEntryAsync(templateEntry, sectionId: refreshSectionId.Value);
@@ -4016,6 +4758,10 @@ namespace Project_bpi
                 return false;
             }
 
+            string previousTitle = context.Table.Title?.Trim() ?? string.Empty;
+            string previousHeaders = FormatTableHeaders(context.Table);
+            string previousBody = FormatTableBodyRows(context.Table);
+
             EnsureEditableTableStructure(context.Structure);
             if (!HasTableContent(context.Structure))
             {
@@ -4060,6 +4806,25 @@ namespace Project_bpi
             }
 
             context.Table.TableItems = BuildTableItemsFromStructure(context.Table.Id, structure);
+            string newHeaders = FormatTableHeaders(structure);
+            string newBody = FormatTableBodyRows(structure);
+
+            bool tableChanged =
+                !string.Equals(previousTitle, title, StringComparison.Ordinal) ||
+                !string.Equals(previousHeaders, newHeaders, StringComparison.Ordinal) ||
+                !string.Equals(previousBody, newBody, StringComparison.Ordinal);
+
+            if (tableChanged)
+            {
+                await LogHistoryAsync(
+                    HistoryActionEdit,
+                    "table",
+                    BuildTableHistoryLocation(context.Template, context.SubSection, context.Table),
+                    BuildHistoryDetails(
+                        !string.Equals(previousTitle, title, StringComparison.Ordinal) ? "обновлено название" : null,
+                        !string.Equals(previousHeaders, newHeaders, StringComparison.Ordinal) ? "обновлена шапка" : null,
+                        !string.Equals(previousBody, newBody, StringComparison.Ordinal) ? "обновлены данные" : null));
+            }
 
             if (refreshAfterSave)
             {
@@ -4152,6 +4917,11 @@ namespace Project_bpi
 
             var database = new DataBase(context.Template.DatabasePath);
             await database.DeleteTable(context.Table.Id);
+            await LogHistoryAsync(
+                HistoryActionDelete,
+                "table",
+                BuildTableHistoryLocation(context.Template, context.SubSection, context.Table),
+                "Удалена таблица");
             await RefreshTemplateEntryAsync(context.Template, subsectionId: context.SubSection.Id);
         }
 
@@ -4996,6 +5766,19 @@ namespace Project_bpi
             UpdateCalendarDisplay(today);
         }
 
+        private void UpdateHistoryCalendarVisibility(bool isVisible)
+        {
+            if (HistoryPeriodPanel != null)
+            {
+                HistoryPeriodPanel.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            if (!isVisible && CalendarPopup != null)
+            {
+                CalendarPopup.IsOpen = false;
+            }
+        }
+
         private void InitializeDateComboBoxes()
         {
             for (int i = 1; i <= 31; i++)
@@ -5226,6 +6009,11 @@ namespace Project_bpi
 
         private void PeriodSelector_Click(object sender, RoutedEventArgs e)
         {
+            if (!(MainContentControl.Content is HistoryChangesView))
+            {
+                return;
+            }
+
             OpenCalendarPopup();
         }
 
@@ -5268,6 +6056,11 @@ namespace Project_bpi
                 }
 
                 UpdateDateDisplay(startDate.Value, endDate.Value);
+                if (MainContentControl.Content is HistoryChangesView historyView)
+                {
+                    historyView.ApplyDateRangeFilter(startDate.Value, endDate.Value);
+                }
+
                 CalendarPopup.IsOpen = false;
             }
             else
@@ -5322,91 +6115,6 @@ namespace Project_bpi
             {
                 this.Title = $"Project BPI - Период: {startDate:dd.MM.yyyy} - {endDate:dd.MM.yyyy} ({startDate.Year}-{endDate.Year})";
             }
-        }
-
-        // === МЕНЮ ===
-
-        private void NIR_Header_Click(object sender, MouseButtonEventArgs e)
-        {
-            ToggleSectionMenu(NIR_Menu, NIR_Arrow);
-            MenuItem_Click(sender, e);
-        }
-
-        private void Section1_Header_Click(object sender, MouseButtonEventArgs e)
-        {
-            ToggleSectionMenu(Section1_Menu, NIR_Arrow1);
-            MenuItem_Click(sender, e);
-        }
-
-        private void Section2_Header_Click(object sender, MouseButtonEventArgs e)
-        {
-            ToggleSectionMenu(Section2_Menu, NIR_Arrow2);
-            MenuItem_Click(sender, e);
-        }
-
-        private void Section3_Header_Click(object sender, MouseButtonEventArgs e)
-        {
-            ToggleSectionMenu(Section3_Menu, NIR_Arrow3);
-            MenuItem_Click(sender, e);
-        }
-
-        private void Section4_Header_Click(object sender, MouseButtonEventArgs e)
-        {
-            ToggleSectionMenu(Section4_Menu, NIR_Arrow4);
-            MenuItem_Click(sender, e);
-        }
-
-        private void Section5_Header_Click(object sender, MouseButtonEventArgs e)
-        {
-            ToggleSectionMenu(Section5_Menu, NIR_Arrow5);
-            MenuItem_Click(sender, e);
-        }
-
-        // Простые разделы без подменю
-        private void Section7_Header_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Section8_Header_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Section9_Header_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Study_Header_Click(object sender, MouseButtonEventArgs e)
-        {
-            ToggleSectionMenu(Study_Menu, Study_Arrow);
-            MenuItem_Click(sender, e);
-        }
-
-        private void Section14_Header_Click(object sender, MouseButtonEventArgs e)
-        {
-            ToggleSectionMenu(Section14_Menu, Study_Arrow14);
-            MenuItem_Click(sender, e);
-        }
-
-        // Обработчики подразделов
-        private void Item_141_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_142_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_143_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void ToggleSectionMenu(StackPanel menu, Image arrow)
-        {
-            if (menu.Visibility == Visibility.Visible)
-            {
-                menu.Visibility = Visibility.Collapsed;
-                ApplyIndicatorVisual(arrow, false, false);
-            }
-            else
-            {
-                menu.Visibility = Visibility.Visible;
-                ApplyIndicatorVisual(arrow, true, false);
-            }
-        }
-
-        // Вложенные подразделы
-        private void Item_51_Click(object sender, MouseButtonEventArgs e)
-        {
-            ToggleSectionMenu(Item_51_SubMenu, NIR_Arrow51);
-            MenuItem_Click(sender, e);
-        }
-
-        private void Item_53_Click(object sender, MouseButtonEventArgs e)
-        {
-            ToggleSectionMenu(Item_53_SubMenu, NIR_Arrow53);
-            MenuItem_Click(sender, e);
         }
 
         Border currentActive = null;
@@ -5546,145 +6254,26 @@ namespace Project_bpi
         {
             if (TryShowDynamicContent(menuItem, editMode))
             {
+                UpdateHistoryCalendarVisibility(false);
                 return;
             }
 
             currentDynamicEditorBorder = null;
+            UpdateHistoryCalendarVisibility(false);
 
-            if (menuItem == Item_11)
+            if (menuItem == Item_Archive)
             {
-                MainContentControl.Content = new Item11View();
-            }
-            else if (menuItem == Item_12)
-            {
-                MainContentControl.Content = new ContractResearchView();
-            }
-            else if (menuItem == Item_13)
-            {
-                MainContentControl.Content = new Item_13View();
-            }
-            else if (menuItem == Item_14)
-            {
-                MainContentControl.Content = new Item_14View();
-            }
-            else if (menuItem == Item_15)
-            {
-                MainContentControl.Content = new СooperationProductionView();
-            }
-            else if (menuItem == Item_21)
-            {
-                MainContentControl.Content = new Item21_View();
-            }
-            else if (menuItem == Item_22)
-            {
-                MainContentControl.Content = new Item22_View();
-            }
-            else if (menuItem == Item_23)
-            {
-                MainContentControl.Content = new Item23_View();
-            }
-            else if (menuItem == Item_24)
-            {
-                MainContentControl.Content = new Item24_View();
-            }
-            else if (menuItem == Item_25)
-            {
-                MainContentControl.Content = new Item25_View();
-            }
-            else if (menuItem == Item_31)
-            {
-                MainContentControl.Content = new Item31_View();
-            }
-            else if (menuItem == Item_32)
-            {
-                MainContentControl.Content = new Item32_View();
-            }
-            else if (menuItem == Section4_Header)
-            {
-                MainContentControl.Content = new Item4_View();
-            }
-            else if (menuItem == Item_41)
-            {
-                MainContentControl.Content = new Item41_View();
-            }
-            else if (menuItem == Item_42)
-            {
-                MainContentControl.Content = new Item42_View();
-            }
-            else if (menuItem == Item_43)
-            {
-                MainContentControl.Content = new Item43_View();
-            }
-            else if (menuItem == Item_51)
-            {
-                MainContentControl.Content = new Item51_View();
-            }
-            else if (menuItem == Item_51a)
-            {
-                MainContentControl.Content = new Item51a_View();
-            }
-            else if (menuItem == Item_52)
-            {
-                MainContentControl.Content = new Item52_View();
-            }
-            else if (menuItem == Item_53)
-            {
-                MainContentControl.Content = new Item53_View();
-            }
-            else if (menuItem == Item_53a)
-            {
-                MainContentControl.Content = new Item53a_View();
-            }
-            else if (menuItem == Item_53b)
-            {
-                MainContentControl.Content = new Item53b_View();
-            }
-            else if (menuItem == Item_54)
-            {
-                MainContentControl.Content = new Item54_View();
-            }
-            else if (menuItem == Section6_Header)
-            {
-                MainContentControl.Content = new Item6_View();
-            }
-            else if (menuItem == Section7_Header)
-            {
-                MainContentControl.Content = new Item7_View();
-            }
-            else if (menuItem == Section8_Header)
-            {
-                MainContentControl.Content = new Item8_View();
-            }
-            else if (menuItem == Item_Archive)
-            {
-                MainContentControl.Content = new ArchivePage();
+                MainContentControl.Content = new ArchivePage(
+                    GetArchivedReportsFolderPath(),
+                    DownloadArchivedReportAsync,
+                    DeleteArchivedReportAsync);
             }
             else if (menuItem == Item_Templates)
             {
-                MainContentControl.Content = new TemplatesPage();
-            }
-            else if (menuItem == Item_141)
-            {
-                MainContentControl.Content = new Item141_View();
-            }
-            else if (menuItem == Item_142)
-            {
-                MainContentControl.Content = new Item142_View();
-            }
-            else if (menuItem == Item_143)
-            {
-                MainContentControl.Content = new Item143_View();
-            }
-            else if (menuItem == Section7_Header || menuItem == Section8_Header || menuItem == Section9_Header)
-            {
-                MainContentControl.Content = new TextBlock
-                {
-                    Text = $"Содержимое {menuItem.Name}",
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = Brushes.Gray,
-                    FontSize = 16
-                };
+                MainContentControl.Content = new TemplatesPage(
+                    GetSavedTemplatesFolderPath(),
+                    RestoreSavedTemplateSnapshotAsync,
+                    DeleteSavedTemplateSnapshotAsync);
             }
             else
             {
@@ -5693,38 +6282,23 @@ namespace Project_bpi
             }
         }
 
-        // Обработчики кликов по новым пунктам
-        private void Item_21_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_22_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_23_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_24_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_25_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-
-        private void Item_31_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_32_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-
-        private void Item_41_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_42_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_43_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-
-        private void Item_51a_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_52_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_53a_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_53b_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_54_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-
-        private void Item_11_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_12_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_13_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_14_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
-        private void Item_15_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
         private void Item_Archive_Click(object sender, MouseButtonEventArgs e) => MenuItem_Click(sender, e);
         private void HistoryButton_Click(object sender, RoutedEventArgs e)
         {
-            MainContentControl.Content = new HistoryChangesView();
+            var historyView = new HistoryChangesView(GetSharedTemplateDatabasePath());
+            MainContentControl.Content = historyView;
+            UpdateHistoryCalendarVisibility(true);
+
+            var startDate = GetStartDateFromComboBoxes();
+            var endDate = GetEndDateFromComboBoxes();
+            if (startDate.HasValue && endDate.HasValue)
+            {
+                historyView.ApplyDateRangeFilter(startDate.Value, endDate.Value);
+            }
         }
         private void HelpHyperlink_Click(object sender, RoutedEventArgs e)
         {
+            UpdateHistoryCalendarVisibility(false);
             MainContentControl.Content = new Spravka_View();
         }
         private void HighlightChain(Border start)
@@ -5749,17 +6323,6 @@ namespace Project_bpi
 
         private void UpdateArrows()
         {
-            ApplyIndicatorVisual(NIR_Arrow, NIR_Menu.Visibility == Visibility.Visible, IsMenuItemActive(NIR_Header));
-            ApplyIndicatorVisual(NIR_Arrow1, Section1_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section1_Header));
-            ApplyIndicatorVisual(NIR_Arrow2, Section2_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section2_Header));
-            ApplyIndicatorVisual(NIR_Arrow3, Section3_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section3_Header));
-            ApplyIndicatorVisual(NIR_Arrow4, Section4_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section4_Header));
-            ApplyIndicatorVisual(NIR_Arrow5, Section5_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section5_Header));
-            ApplyIndicatorVisual(NIR_Arrow51, Item_51_SubMenu.Visibility == Visibility.Visible, IsMenuItemActive(Item_51));
-            ApplyIndicatorVisual(NIR_Arrow53, Item_53_SubMenu.Visibility == Visibility.Visible, IsMenuItemActive(Item_53));
-            ApplyIndicatorVisual(Study_Arrow, Study_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Study_Header));
-            ApplyIndicatorVisual(Study_Arrow14, Section14_Menu.Visibility == Visibility.Visible, IsMenuItemActive(Section14_Header));
-
             foreach (var pair in dynamicIndicators)
             {
                 bool isExpanded = dynamicMenus.TryGetValue(pair.Key, out var menu) && menu.Visibility == Visibility.Visible;
@@ -5772,8 +6335,6 @@ namespace Project_bpi
             SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text) ? Visibility.Visible : Visibility.Collapsed;
             string query = SearchBox.Text?.Trim() ?? string.Empty;
 
-            FilterMenuPanel(NIR_Menu, query);
-            FilterMenuPanel(Study_Menu, query);
             FilterMenuPanel(DynamicTemplatesPanel, query);
             FilterMenuItem(Item_Archive, query);
             FilterMenuItem(Item_Templates, query);
@@ -5787,19 +6348,7 @@ namespace Project_bpi
                 {
                     FilterMenuItem(border, query);
 
-                    StackPanel subPanel = null;
-                    if (border.Name == "Section1_Header") subPanel = Section1_Menu;
-                    else if (border.Name == "Section2_Header") subPanel = Section2_Menu;
-                    else if (border.Name == "Section3_Header") subPanel = Section3_Menu;
-                    else if (border.Name == "Section4_Header") subPanel = Section4_Menu;
-                    else if (border.Name == "Section5_Header") subPanel = Section5_Menu;
-                    else if (border.Name == "Item_51") subPanel = Item_51_SubMenu;
-                    else if (border.Name == "Item_53") subPanel = Item_53_SubMenu;
-                    else if (border.Name == "NIR_Header") subPanel = NIR_Menu;
-                    else if (border.Name == "Section14_Header") subPanel = Section14_Menu;
-                    else if (border.Name == "Study_Header") subPanel = Study_Menu;
-
-                    if (subPanel != null)
+                    if (dynamicMenus.TryGetValue(border, out var subPanel))
                     {
                         FilterMenuPanel(subPanel, query);
                         bool hasVisibleChild = subPanel.Children.Cast<UIElement>().Any(c => c.Visibility == Visibility.Visible);

@@ -47,16 +47,15 @@ namespace Project_bpi
             };
         }
 
-        private void HideStaticNirReportMenu()
-        {
-            NIR_Header.Visibility = System.Windows.Visibility.Collapsed;
-            NIR_Menu.Visibility = System.Windows.Visibility.Collapsed;
-        }
-
         private async Task EnsureNirReportInDatabaseAsync()
         {
             var database = new DataBase(GetSharedTemplateDatabasePath());
             database.InitializeDatabase(false);
+
+            if (await database.HasSuppressedBuiltInReport(NirReportSuppressionKey))
+            {
+                return;
+            }
 
             var reports = await database.GetAllReports();
             var existingNirReport = reports.FirstOrDefault(report =>
