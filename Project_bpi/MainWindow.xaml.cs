@@ -2304,6 +2304,11 @@ namespace Project_bpi
                 saveButton.Click += SavePreviewTableButton_Click;
                 buttons.Children.Add(saveButton);
 
+                var exportButton = CreateSecondaryButton("Экспортировать таблицу");
+                exportButton.Tag = context;
+                exportButton.Click += ExportTableToExcelButton_Click;
+                buttons.Children.Add(exportButton);
+
                 content.Children.Add(buttons);
             }
 
@@ -2550,6 +2555,11 @@ namespace Project_bpi
             mergeCellsButton.Tag = context;
             mergeCellsButton.Click += MergeTableCellsButton_Click;
             tableActions.Children.Add(mergeCellsButton);
+
+            var importButton = CreateSecondaryButton("Импортировать таблицу");
+            importButton.Tag = context;
+            importButton.Click += ImportTableFromExcelButton_Click;
+            tableActions.Children.Add(importButton);
 
             panel.Children.Add(tableActions);
 
@@ -4743,6 +4753,91 @@ namespace Project_bpi
             await SaveTableAsync(context, false);
         }
 
+        private void ExportTableToExcelButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is Button button) || !(button.Tag is TableEditorContext context))
+            {
+                return;
+            }
+
+            try
+            {
+                EnsureEditableTableStructure(context.Structure);
+
+                string title = (context.TitleTextBox?.Text ?? context.Table?.Title ?? "Таблица").Trim();
+                if (string.IsNullOrWhiteSpace(title))
+                {
+                    title = "Таблица";
+                }
+
+                var saveDialog = new SaveFileDialog
+                {
+                    Title = "Экспортировать таблицу",
+                    Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+                    FileName = $"{SanitizeFileName(title)}.xlsx",
+                    DefaultExt = ".xlsx",
+                    AddExtension = true
+                };
+
+                if (saveDialog.ShowDialog() != true)
+                {
+                    return;
+                }
+
+                ExcelTableExchangeService.Export(saveDialog.FileName, ConvertToExcelTableData(context.Structure));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось экспортировать таблицу:{Environment.NewLine}{ex.Message}",
+                    "Таблица",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private void ImportTableFromExcelButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is Button button) || !(button.Tag is TableEditorContext context))
+            {
+                return;
+            }
+
+            var openDialog = new OpenFileDialog
+            {
+                Title = "Импортировать таблицу",
+                Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+
+            if (openDialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            try
+            {
+                var imported = ExcelTableExchangeService.Import(openDialog.FileName);
+                context.Structure = ConvertFromExcelTableData(imported);
+
+                if (context.TitleTextBox != null && string.IsNullOrWhiteSpace(context.TitleTextBox.Text))
+                {
+                    context.TitleTextBox.Text = Path.GetFileNameWithoutExtension(openDialog.FileName);
+                }
+
+                RefreshTableEditor(context);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось импортировать таблицу:{Environment.NewLine}{ex.Message}",
+                    "Таблица",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
         private async Task<bool> SaveTableAsync(TableEditorContext context, bool refreshAfterSave)
         {
             if (context == null)
@@ -4832,6 +4927,91 @@ namespace Project_bpi
             }
 
             return true;
+        }
+
+        private ExcelTableData ConvertToExcelTableData(TableStructure structure)
+        {
+            var data = new ExcelTableData
+            {
+                ColumnCount = structure?.ColumnCount ?? 0,
+                HeaderRowCount = structure?.HeaderRowCount ?? 0,
+                BodyRowCount = structure?.BodyRowCount ?? 0
+            };
+
+            if (structure == null)
+            {
+                return data;
+            }
+
+            foreach (var cell in structure.HeaderCells)
+            {
+                data.HeaderCells.Add(new ExcelTableCell
+                {
+                    Text = cell.Text,
+                    Column = cell.Column,
+                    Row = cell.Row,
+                    ColSpan = cell.ColSpan,
+                    RowSpan = cell.RowSpan,
+                    IsHeader = cell.IsHeader
+                });
+            }
+
+            foreach (var cell in structure.BodyCells)
+            {
+                data.BodyCells.Add(new ExcelTableCell
+                {
+                    Text = cell.Text,
+                    Column = cell.Column,
+                    Row = cell.Row,
+                    ColSpan = cell.ColSpan,
+                    RowSpan = cell.RowSpan,
+                    IsHeader = cell.IsHeader
+                });
+            }
+
+            return data;
+        }
+
+        private TableStructure ConvertFromExcelTableData(ExcelTableData data)
+        {
+            var structure = new TableStructure
+            {
+                ColumnCount = Math.Max(1, data?.ColumnCount ?? 1),
+                HeaderRowCount = Math.Max(1, data?.HeaderRowCount ?? 1),
+                BodyRowCount = Math.Max(0, data?.BodyRowCount ?? 0)
+            };
+
+            if (data != null)
+            {
+                foreach (var cell in data.HeaderCells)
+                {
+                    structure.HeaderCells.Add(new TableCellDefinition
+                    {
+                        Text = cell.Text ?? string.Empty,
+                        Column = cell.Column,
+                        Row = cell.Row,
+                        ColSpan = Math.Max(1, cell.ColSpan),
+                        RowSpan = Math.Max(1, cell.RowSpan),
+                        IsHeader = cell.IsHeader
+                    });
+                }
+
+                foreach (var cell in data.BodyCells)
+                {
+                    structure.BodyCells.Add(new TableCellDefinition
+                    {
+                        Text = cell.Text ?? string.Empty,
+                        Column = cell.Column,
+                        Row = cell.Row,
+                        ColSpan = Math.Max(1, cell.ColSpan),
+                        RowSpan = Math.Max(1, cell.RowSpan),
+                        IsHeader = cell.IsHeader
+                    });
+                }
+            }
+
+            EnsureEditableTableStructure(structure);
+            return structure;
         }
 
         private bool HasTableContent(TableStructure structure)

@@ -95,6 +95,7 @@
     <Compile Include="Models\Text.cs" />
     <Compile Include="Services\DataBase.cs" />
     <Compile Include="Services\DocxExportService.cs" />
+    <Compile Include="Services\ExcelTableExchangeService.cs" />
     <Compile Include="Spravka_View.xaml.cs">
       <DependentUpon>Spravka_View.xaml</DependentUpon>
     </Compile>
