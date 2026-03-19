@@ -48,6 +48,9 @@ namespace Project_bpi
             public TableCellSeed[] Cells { get; set; }
         }
 
+        private static readonly Lazy<IReadOnlyDictionary<string, HashSet<string>>> ReadOnlySeededBodyCellsByPattern =
+            new Lazy<IReadOnlyDictionary<string, HashSet<string>>>(BuildReadOnlySeededBodyCellsByPattern);
+
         private sealed class NirSubSectionSeed
         {
             public int Number { get; set; }
@@ -166,6 +169,7 @@ namespace Project_bpi
             public TextBox TitleTextBox { get; set; }
             public TableStructure Structure { get; set; }
             public ContentControl TableEditorHost { get; set; }
+            public Func<TableEditorContext, UIElement> TableViewFactory { get; set; }
         }
 
         public MainWindow()
@@ -1238,6 +1242,7 @@ namespace Project_bpi
         private UIElement CreateSectionPreviewContent(Section section)
         {
             var contentSubSection = GetSectionContentSubSection(section);
+            var templateEntry = FindTemplateEntryForSection(section);
             string sectionText = GetSectionRawContent(section);
             string sectionTitle = GetSectionContentTitle(section);
             var stack = new StackPanel
@@ -1259,7 +1264,7 @@ namespace Project_bpi
             {
                 foreach (var table in contentSubSection.Tables.OrderBy(table => table.Id))
                 {
-                    stack.Children.Add(CreateSubSectionPreviewTableCard(table));
+                    stack.Children.Add(CreateSubSectionPreviewTableCard(templateEntry, contentSubSection, table));
                 }
             }
 
@@ -1394,13 +1399,14 @@ namespace Project_bpi
 
         private UIElement CreateSubSectionPreviewContent(SubSection subsection)
         {
+            var templateEntry = FindTemplateEntryForSubSection(subsection);
             string sectionTitle = subsection.Section != null
                 ? GetSectionContentTitle(subsection.Section)
                 : string.Empty;
             string subSectionTitle = BuildSubSectionTitle(subsection.Section, subsection);
             string content = subsection.Texts != null && subsection.Texts.Any()
                 ? subsection.Texts.First().Content
-                : "Текст подраздела пока не заполнен.";
+                : string.Empty;
 
             var stack = new StackPanel
             {
@@ -1408,13 +1414,16 @@ namespace Project_bpi
             };
 
             stack.Children.Add(CreateSubSectionPreviewHeader(sectionTitle, subSectionTitle));
-            stack.Children.Add(CreateSubSectionPreviewBody(content));
+            if (!string.IsNullOrWhiteSpace(content))
+            {
+                stack.Children.Add(CreateSubSectionPreviewBody(content));
+            }
 
             if (subsection.Tables != null && subsection.Tables.Any())
             {
                 foreach (var table in subsection.Tables.OrderBy(t => t.Id))
                 {
-                    stack.Children.Add(CreateSubSectionPreviewTableCard(table));
+                    stack.Children.Add(CreateSubSectionPreviewTableCard(templateEntry, subsection, table));
                 }
             }
 
@@ -1577,6 +1586,23 @@ namespace Project_bpi
 
         private Border CreateSubSectionPreviewTableCard(Table table)
         {
+            return CreateSubSectionPreviewTableCard(null, null, table);
+        }
+
+        private Border CreateSubSectionPreviewTableCard(DynamicTemplateEntry templateEntry, SubSection subsection, Table table)
+        {
+            var structure = CreateEditableTableStructure(table);
+            var previewHost = new ContentControl();
+            var context = new TableEditorContext
+            {
+                Template = templateEntry,
+                SubSection = subsection,
+                Table = table,
+                Structure = structure,
+                TableEditorHost = previewHost,
+                TableViewFactory = CreateFillableTableGrid
+            };
+
             var content = new StackPanel();
 
             content.Children.Add(new TextBlock
@@ -1588,7 +1614,33 @@ namespace Project_bpi
                 TextWrapping = TextWrapping.Wrap
             });
 
-            content.Children.Add(CreateTablePreview(table));
+            previewHost.Content = CreateFillableTableGrid(context);
+            content.Children.Add(previewHost);
+
+            if (templateEntry != null && subsection != null)
+            {
+                content.Children.Add(new TextBlock
+                {
+                    Text = "Заполняйте строки прямо здесь и сохраняйте таблицу без перехода в режим редактирования.",
+                    Margin = new Thickness(0, 8, 0, 8),
+                    Foreground = Brushes.DimGray,
+                    TextWrapping = TextWrapping.Wrap
+                });
+
+                var buttons = CreateButtonRow();
+
+                var addRowButton = CreateSecondaryButton("Добавить строку");
+                addRowButton.Tag = context;
+                addRowButton.Click += AddTableRowButton_Click;
+                buttons.Children.Add(addRowButton);
+
+                var saveButton = CreateActionButton("Сохранить таблицу");
+                saveButton.Tag = context;
+                saveButton.Click += SavePreviewTableButton_Click;
+                buttons.Children.Add(saveButton);
+
+                content.Children.Add(buttons);
+            }
 
             return new Border
             {
@@ -1803,7 +1855,8 @@ namespace Project_bpi
                 Table = table,
                 TitleTextBox = titleBox,
                 Structure = structure,
-                TableEditorHost = editorHost
+                TableEditorHost = editorHost,
+                TableViewFactory = CreateEditableTableGrid
             };
             tableEditors?.Add(context);
 
@@ -1832,11 +1885,12 @@ namespace Project_bpi
             mergeCellsButton.Tag = context;
             mergeCellsButton.Click += MergeTableCellsButton_Click;
             tableActions.Children.Add(mergeCellsButton);
+
             panel.Children.Add(tableActions);
 
             panel.Children.Add(new TextBlock
             {
-                Text = "Нажмите на ячейку и печатайте прямо в таблице. Первая строка относится к шапке, под ней автоматически показывается нумерация столбцов, новые строки добавляются как строки данных.",
+                Text = "Нажмите на ячейку и печатайте прямо в таблице. Первая строка относится к шапке, новые строки добавляются как строки данных. Замочек рядом со строкой или столбцом переключает их в режим шапки и обратно.",
                 Margin = new Thickness(0, 0, 0, 8),
                 Foreground = Brushes.DimGray,
                 TextWrapping = TextWrapping.Wrap
@@ -1885,7 +1939,7 @@ namespace Project_bpi
             }
 
             EnsureEditableTableStructure(context.Structure);
-            context.TableEditorHost.Content = CreateEditableTableGrid(context);
+            context.TableEditorHost.Content = (context.TableViewFactory ?? CreateEditableTableGrid)(context);
         }
 
         private void EnsureEditableTableStructure(TableStructure structure)
@@ -1956,9 +2010,7 @@ namespace Project_bpi
         private UIElement CreateEditableTableGrid(TableEditorContext context)
         {
             var structure = context.Structure;
-            bool hasAutoNumberRow = ShouldShowAutoNumberRow(structure);
-            int numberRowOffset = hasAutoNumberRow ? 1 : 0;
-            int totalDisplayRowCount = structure.HeaderRowCount + numberRowOffset + structure.BodyRowCount;
+            int totalDisplayRowCount = structure.HeaderRowCount + structure.BodyRowCount;
 
             var grid = new Grid
             {
@@ -1985,12 +2037,7 @@ namespace Project_bpi
             AddColumnHandles(grid, context);
             AddRowHandles(grid, context);
             AddEditableCellsToGrid(grid, structure.HeaderCells, 1, 1);
-            if (hasAutoNumberRow)
-            {
-                AddAutoNumberRowToGrid(grid, structure.HeaderRowCount + 1, structure.ColumnCount, 1);
-            }
-
-            AddEditableCellsToGrid(grid, structure.BodyCells, structure.HeaderRowCount + numberRowOffset + 1, 1);
+            AddEditableCellsToGrid(grid, structure.BodyCells, structure.HeaderRowCount + 1, 1);
 
             return new Border
             {
@@ -1998,6 +2045,86 @@ namespace Project_bpi
                 BorderThickness = new Thickness(1),
                 Background = Brushes.White,
                 Child = grid
+            };
+        }
+
+        private UIElement CreateFillableTableGrid(TableEditorContext context)
+        {
+            EnsureEditableTableStructure(context.Structure);
+
+            var structure = context.Structure;
+            int columnCount = structure.ColumnCount;
+
+            if (columnCount == 0)
+            {
+                return new Border
+                {
+                    Background = Brushes.White,
+                    BorderBrush = Brushes.Black,
+                    BorderThickness = new Thickness(1),
+                    Padding = new Thickness(12),
+                    Child = new TextBlock
+                    {
+                        Text = "Таблица пока пустая.",
+                        Foreground = Brushes.Gray
+                    }
+                };
+            }
+
+            var panel = new StackPanel
+            {
+                Background = Brushes.White
+            };
+
+            if (structure.HeaderRowCount > 0)
+            {
+                var headerGrid = new Grid();
+                ConfigurePreviewTableColumns(headerGrid, columnCount);
+
+                for (int rowIndex = 0; rowIndex < structure.HeaderRowCount; rowIndex++)
+                {
+                    headerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                }
+
+                AddHeaderCells(headerGrid, structure, columnCount);
+                panel.Children.Add(headerGrid);
+            }
+
+            if (structure.BodyRowCount > 0)
+            {
+                var bodyGrid = new Grid();
+                ConfigurePreviewTableColumns(bodyGrid, columnCount);
+
+                for (int rowIndex = 0; rowIndex < structure.BodyRowCount; rowIndex++)
+                {
+                    bodyGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                }
+
+                AddFillablePreviewCellsToGrid(bodyGrid, context, structure.BodyCells, structure.BodyRowCount, columnCount);
+                panel.Children.Add(bodyGrid);
+            }
+            else
+            {
+                panel.Children.Add(new Border
+                {
+                    BorderBrush = Brushes.Black,
+                    BorderThickness = new Thickness(0, 0, 0, 1),
+                    Padding = new Thickness(10),
+                    Child = new TextBlock
+                    {
+                        Text = "Строки данных отсутствуют. Добавьте строку, чтобы заполнить таблицу.",
+                        Foreground = Brushes.Gray,
+                        TextWrapping = TextWrapping.Wrap
+                    }
+                });
+            }
+
+            return new Border
+            {
+                Background = Brushes.White,
+                BorderBrush = Brushes.Black,
+                BorderThickness = new Thickness(1),
+                Child = panel
             };
         }
 
@@ -2038,9 +2165,11 @@ namespace Project_bpi
             {
                 int targetColumn = column;
                 bool canDelete = context.Structure.ColumnCount > 1;
+                bool isHeaderColumn = IsTableColumnHeader(context.Structure, targetColumn);
                 var handle = CreateTableEdgeHandle(
                     plusToolTip: "Вставить столбец",
                     minusToolTip: "Удалить столбец",
+                    lockToolTip: isHeaderColumn ? "Убрать столбец из шапки" : "Сделать столбец шапкой",
                     onPlusClick: () =>
                     {
                         InsertTableColumn(context, targetColumn);
@@ -2048,6 +2177,11 @@ namespace Project_bpi
                     onMinusClick: canDelete
                         ? (System.Action)(() => DeleteTableColumn(context, targetColumn))
                         : null,
+                    onLockClick: () =>
+                    {
+                        ToggleTableColumnHeader(context, targetColumn);
+                    },
+                    isLocked: isHeaderColumn,
                     isColumnHandle: true);
 
                 Grid.SetRow(handle, 0);
@@ -2058,11 +2192,14 @@ namespace Project_bpi
             var trailingHandle = CreateTableEdgeHandle(
                 plusToolTip: "Добавить столбец справа",
                 minusToolTip: null,
+                lockToolTip: null,
                 onPlusClick: () =>
                 {
                     InsertTableColumn(context, context.Structure.ColumnCount + 1);
                 },
                 onMinusClick: null,
+                onLockClick: null,
+                isLocked: false,
                 isColumnHandle: true);
 
             Grid.SetRow(trailingHandle, 0);
@@ -2072,30 +2209,34 @@ namespace Project_bpi
 
         private void AddRowHandles(Grid grid, TableEditorContext context)
         {
-            bool hasAutoNumberRow = ShouldShowAutoNumberRow(context.Structure);
-            int numberRowOffset = hasAutoNumberRow ? 1 : 0;
             int totalStructureRowCount = context.Structure.HeaderRowCount + context.Structure.BodyRowCount;
 
             for (int structureRow = 1; structureRow <= totalStructureRowCount; structureRow++)
             {
+                int targetRow = structureRow;
                 bool isHeaderRow = structureRow <= context.Structure.HeaderRowCount;
                 bool canDelete = isHeaderRow
                     ? context.Structure.HeaderRowCount > 1
                     : context.Structure.BodyRowCount > 0;
-                int gridRow = isHeaderRow
-                    ? structureRow
-                    : structureRow + numberRowOffset;
+                bool rowMarkedAsHeader = IsDisplayRowHeader(context.Structure, targetRow);
+                int gridRow = structureRow;
 
                 var handle = CreateTableEdgeHandle(
                     plusToolTip: "Вставить строку",
                     minusToolTip: "Удалить строку",
+                    lockToolTip: rowMarkedAsHeader ? "Убрать строку из шапки" : "Сделать строку шапкой",
                     onPlusClick: () =>
                     {
-                        InsertTableRow(context, structureRow);
+                        InsertTableRow(context, targetRow);
                     },
                     onMinusClick: canDelete
-                        ? (System.Action)(() => DeleteTableRow(context, structureRow))
+                        ? (System.Action)(() => DeleteTableRow(context, targetRow))
                         : null,
+                    onLockClick: () =>
+                    {
+                        ToggleDisplayRowHeader(context, targetRow);
+                    },
+                    isLocked: rowMarkedAsHeader,
                     isColumnHandle: false);
 
                 Grid.SetRow(handle, gridRow);
@@ -2106,19 +2247,30 @@ namespace Project_bpi
             var trailingHandle = CreateTableEdgeHandle(
                 plusToolTip: "Добавить строку снизу",
                 minusToolTip: null,
+                lockToolTip: null,
                 onPlusClick: () =>
                 {
                     InsertTableRow(context, totalStructureRowCount + 1);
                 },
                 onMinusClick: null,
+                onLockClick: null,
+                isLocked: false,
                 isColumnHandle: false);
 
-            Grid.SetRow(trailingHandle, totalStructureRowCount + numberRowOffset + 1);
+            Grid.SetRow(trailingHandle, totalStructureRowCount + 1);
             Grid.SetColumn(trailingHandle, 0);
             grid.Children.Add(trailingHandle);
         }
 
-        private Border CreateTableEdgeHandle(string plusToolTip, string minusToolTip, System.Action onPlusClick, System.Action onMinusClick, bool isColumnHandle)
+        private Border CreateTableEdgeHandle(
+            string plusToolTip,
+            string minusToolTip,
+            string lockToolTip,
+            System.Action onPlusClick,
+            System.Action onMinusClick,
+            System.Action onLockClick,
+            bool isLocked,
+            bool isColumnHandle)
         {
             var buttonsPanel = new StackPanel
             {
@@ -2136,6 +2288,14 @@ namespace Project_bpi
             if (onMinusClick != null)
             {
                 buttonsPanel.Children.Add(CreateTableEdgeButton(CreateTableMinusIcon(), minusToolTip, onMinusClick));
+            }
+
+            if (onLockClick != null)
+            {
+                buttonsPanel.Children.Add(CreateTableEdgeButton(
+                    isLocked ? CreateTableLockIcon() : CreateTableUnlockIcon(),
+                    lockToolTip,
+                    onLockClick));
             }
 
             var host = new Border
@@ -2236,6 +2396,62 @@ namespace Project_bpi
             return grid;
         }
 
+        private UIElement CreateTableUnlockIcon()
+        {
+            var grid = new Grid
+            {
+                Width = 14,
+                Height = 14
+            };
+
+            grid.Children.Add(new Border
+            {
+                Width = 10,
+                Height = 7,
+                CornerRadius = new CornerRadius(2),
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#111827")),
+                VerticalAlignment = VerticalAlignment.Bottom
+            });
+
+            grid.Children.Add(new System.Windows.Shapes.Path
+            {
+                Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#111827")),
+                StrokeThickness = 1.8,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round,
+                Data = Geometry.Parse("M4.3,7 L4.3,5.2 C4.3,3.3 5.6,2 7,2 C8.4,2 9.6,3.2 9.6,4.8"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top
+            });
+
+            grid.Children.Add(new Border
+            {
+                Width = 2,
+                Height = 2,
+                Background = Brushes.White,
+                CornerRadius = new CornerRadius(1),
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 0, 3)
+            });
+
+            return grid;
+        }
+
+        private UIElement CreateTableLockIcon()
+        {
+            return new Viewbox
+            {
+                Width = 14,
+                Height = 14,
+                Stretch = Stretch.Uniform,
+                Child = new System.Windows.Shapes.Path
+                {
+                    Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#111827")),
+                    Data = Geometry.Parse("M 12 1 C 8.6761905 1 6 3.6761905 6 7 L 6 8 C 4.9 8 4 8.9 4 10 L 4 20 C 4 21.1 4.9 22 6 22 L 18 22 C 19.1 22 20 21.1 20 20 L 20 10 C 20 8.9 19.1 8 18 8 L 18 7 C 18 3.6761905 15.32381 1 12 1 z M 12 3 C 14.27619 3 16 4.7238095 16 7 L 16 8 L 8 8 L 8 7 C 8 4.7238095 9.7238095 3 12 3 z M 12 13 C 13.1 13 14 13.9 14 15 C 14 16.1 13.1 17 12 17 C 10.9 17 10 16.1 10 15 C 10 13.9 10.9 13 12 13 z")
+                }
+            };
+        }
+
         private void AddEditableCellsToGrid(Grid grid, IEnumerable<TableCellDefinition> cells, int rowOffset, int columnOffset)
         {
             foreach (var cell in cells.OrderBy(item => item.Row).ThenBy(item => item.Column))
@@ -2249,7 +2465,178 @@ namespace Project_bpi
             }
         }
 
-        private TextBox CreateEditableTableCellTextBox(TableCellDefinition cell)
+        private void AddFillablePreviewCellsToGrid(
+            Grid grid,
+            TableEditorContext context,
+            IReadOnlyCollection<TableCellDefinition> cells,
+            int rowCount,
+            int columnCount)
+        {
+            var readOnlyCells = GetReadOnlySeededBodyCells(context?.Table);
+            var occupied = new bool[rowCount + 1, columnCount + 1];
+
+            foreach (var cell in cells.OrderBy(item => item.Row).ThenBy(item => item.Column))
+            {
+                bool shouldRenderAsHeader = cell.IsHeader;
+                UIElement element = shouldRenderAsHeader || readOnlyCells.Contains(GetTableCellSeedKey(cell))
+                    ? (UIElement)CreateTableCellBorder(cell.Text, cell.IsHeader)
+                    : CreateEditableTableCellTextBox(cell);
+
+                Grid.SetRow(element, cell.Row - 1);
+                Grid.SetColumn(element, cell.Column - 1);
+                Grid.SetColumnSpan(element, cell.ColSpan);
+                Grid.SetRowSpan(element, cell.RowSpan);
+                grid.Children.Add(element);
+
+                for (int row = cell.Row; row < cell.Row + cell.RowSpan; row++)
+                {
+                    for (int column = cell.Column; column < cell.Column + cell.ColSpan; column++)
+                    {
+                        occupied[row, column] = true;
+                    }
+                }
+            }
+
+            for (int row = 1; row <= rowCount; row++)
+            {
+                for (int column = 1; column <= columnCount; column++)
+                {
+                    if (occupied[row, column])
+                    {
+                        continue;
+                    }
+
+                    var emptyBorder = CreateTableCellBorder(string.Empty, false);
+                    Grid.SetRow(emptyBorder, row - 1);
+                    Grid.SetColumn(emptyBorder, column - 1);
+                    grid.Children.Add(emptyBorder);
+                }
+            }
+        }
+
+        private static IReadOnlyDictionary<string, HashSet<string>> BuildReadOnlySeededBodyCellsByPattern()
+        {
+            var result = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+            foreach (var seed in GetAllKnownTableSeeds())
+            {
+                if (seed?.Cells == null || string.IsNullOrWhiteSpace(seed.PatternName))
+                {
+                    continue;
+                }
+
+                if (!result.TryGetValue(seed.PatternName, out var cellKeys))
+                {
+                    cellKeys = new HashSet<string>(StringComparer.Ordinal);
+                    result[seed.PatternName] = cellKeys;
+                }
+
+                foreach (var cell in seed.Cells.Where(item => item != null && !item.IsHeader && !string.IsNullOrWhiteSpace(item.Text)))
+                {
+                    cellKeys.Add(GetTableCellSeedKey(cell));
+                }
+            }
+
+            return result;
+        }
+
+        private static IEnumerable<TableSeed> GetAllKnownTableSeeds()
+        {
+            foreach (var seed in StudyReportSubSections)
+            {
+                if (string.IsNullOrWhiteSpace(seed?.TablePatternName) || seed.Headers == null)
+                {
+                    continue;
+                }
+
+                yield return new TableSeed
+                {
+                    Title = seed.Title,
+                    PatternName = seed.TablePatternName,
+                    Cells = seed.Headers
+                        .Select((header, index) => HeaderCell(1, index + 1, header))
+                        .ToArray()
+                };
+            }
+
+            foreach (var section in GetNirReportSections())
+            {
+                foreach (var tableSeed in EnumerateTableSeeds(section))
+                {
+                    yield return tableSeed;
+                }
+            }
+        }
+
+        private static IEnumerable<TableSeed> EnumerateTableSeeds(NirSectionSeed section)
+        {
+            foreach (var table in section?.Tables ?? Array.Empty<TableSeed>())
+            {
+                yield return table;
+            }
+
+            foreach (var subsection in section?.SubSections ?? Array.Empty<NirSubSectionSeed>())
+            {
+                foreach (var table in EnumerateTableSeeds(subsection))
+                {
+                    yield return table;
+                }
+            }
+        }
+
+        private static IEnumerable<TableSeed> EnumerateTableSeeds(NirSubSectionSeed subsection)
+        {
+            foreach (var table in subsection?.Tables ?? Array.Empty<TableSeed>())
+            {
+                yield return table;
+            }
+
+            foreach (var child in subsection?.Children ?? Array.Empty<NirSubSectionSeed>())
+            {
+                foreach (var table in EnumerateTableSeeds(child))
+                {
+                    yield return table;
+                }
+            }
+        }
+
+        private static HashSet<string> GetReadOnlySeededBodyCells(Table table)
+        {
+            if (table == null || string.IsNullOrWhiteSpace(table.PatternName))
+            {
+                return EmptyReadOnlySeededBodyCells;
+            }
+
+            return ReadOnlySeededBodyCellsByPattern.Value.TryGetValue(table.PatternName, out var cells)
+                ? cells
+                : EmptyReadOnlySeededBodyCells;
+        }
+
+        private static readonly HashSet<string> EmptyReadOnlySeededBodyCells =
+            new HashSet<string>(StringComparer.Ordinal);
+
+        private static string GetTableCellSeedKey(TableCellDefinition cell)
+        {
+            return GetTableCellSeedKey(cell.Row, cell.Column, cell.ColSpan, cell.RowSpan, cell.Text);
+        }
+
+        private static string GetTableCellSeedKey(TableCellSeed cell)
+        {
+            return GetTableCellSeedKey(cell.Row, cell.Column, cell.ColSpan, cell.RowSpan, cell.Text);
+        }
+
+        private static string GetTableCellSeedKey(int row, int column, int colSpan, int rowSpan, string text)
+        {
+            return string.Concat(
+                row.ToString(CultureInfo.InvariantCulture), "|",
+                column.ToString(CultureInfo.InvariantCulture), "|",
+                colSpan.ToString(CultureInfo.InvariantCulture), "|",
+                rowSpan.ToString(CultureInfo.InvariantCulture), "|",
+                text ?? string.Empty);
+        }
+
+        private TextBox CreateEditableTableCellTextBox(
+            TableCellDefinition cell)
         {
             var textBox = new TextBox
             {
@@ -2277,6 +2664,96 @@ namespace Project_bpi
             };
 
             return textBox;
+        }
+
+        private void ToggleDisplayRowHeader(TableEditorContext context, int displayRow)
+        {
+            EnsureEditableTableStructure(context.Structure);
+
+            var rowCells = GetCellsForDisplayRow(context.Structure, displayRow).ToList();
+            if (!rowCells.Any())
+            {
+                return;
+            }
+
+            bool targetState = !rowCells.All(cell => cell.IsHeader);
+            foreach (var cell in rowCells)
+            {
+                cell.IsHeader = targetState;
+            }
+
+            RefreshTableEditor(context);
+        }
+
+        private void ToggleTableColumnHeader(TableEditorContext context, int column)
+        {
+            EnsureEditableTableStructure(context.Structure);
+
+            var columnCells = GetCellsForColumn(context.Structure, column).ToList();
+            if (!columnCells.Any())
+            {
+                return;
+            }
+
+            bool targetState = !columnCells.All(cell => cell.IsHeader);
+            foreach (var cell in columnCells)
+            {
+                cell.IsHeader = targetState;
+            }
+
+            RefreshTableEditor(context);
+        }
+
+        private bool IsDisplayRowHeader(TableStructure structure, int displayRow)
+        {
+            var rowCells = GetCellsForDisplayRow(structure, displayRow).ToList();
+            return rowCells.Any() && rowCells.All(cell => cell.IsHeader);
+        }
+
+        private bool IsTableColumnHeader(TableStructure structure, int column)
+        {
+            var columnCells = GetCellsForColumn(structure, column).ToList();
+            return columnCells.Any() && columnCells.All(cell => cell.IsHeader);
+        }
+
+        private IEnumerable<TableCellDefinition> GetCellsForDisplayRow(TableStructure structure, int displayRow)
+        {
+            if (structure == null)
+            {
+                yield break;
+            }
+
+            if (displayRow <= structure.HeaderRowCount)
+            {
+                foreach (var cell in structure.HeaderCells.Where(cell =>
+                             cell.Row <= displayRow && displayRow < cell.Row + cell.RowSpan))
+                {
+                    yield return cell;
+                }
+
+                yield break;
+            }
+
+            int bodyRow = displayRow - structure.HeaderRowCount;
+            foreach (var cell in structure.BodyCells.Where(cell =>
+                         cell.Row <= bodyRow && bodyRow < cell.Row + cell.RowSpan))
+            {
+                yield return cell;
+            }
+        }
+
+        private IEnumerable<TableCellDefinition> GetCellsForColumn(TableStructure structure, int column)
+        {
+            if (structure == null)
+            {
+                yield break;
+            }
+
+            foreach (var cell in structure.HeaderCells.Concat(structure.BodyCells).Where(cell =>
+                         cell.Column <= column && column < cell.Column + cell.ColSpan))
+            {
+                yield return cell;
+            }
         }
 
         private void AddTableColumnButton_Click(object sender, RoutedEventArgs e)
@@ -2983,6 +3460,16 @@ namespace Project_bpi
             await SaveTableAsync(context, true);
         }
 
+        private async void SavePreviewTableButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is Button button) || !(button.Tag is TableEditorContext context))
+            {
+                return;
+            }
+
+            await SaveTableAsync(context, false);
+        }
+
         private async Task<bool> SaveTableAsync(TableEditorContext context, bool refreshAfterSave)
         {
             if (context == null)
@@ -2990,7 +3477,7 @@ namespace Project_bpi
                 return false;
             }
 
-            string title = context.TitleTextBox.Text.Trim();
+            string title = (context.TitleTextBox?.Text ?? context.Table?.Title ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(title))
             {
                 MessageBox.Show("Название таблицы не может быть пустым.", "Таблица",
@@ -3023,7 +3510,7 @@ namespace Project_bpi
                     Header = headerCell.Text,
                     ColSpan = headerCell.ColSpan,
                     RowSpan = headerCell.RowSpan,
-                    IsHeader = true
+                    IsHeader = headerCell.IsHeader
                 });
             }
 
@@ -3032,14 +3519,16 @@ namespace Project_bpi
                 await database.AddTableItem(new TableItem
                 {
                     TableId = context.Table.Id,
-                    Row = bodyCell.Row,
+                    Row = structure.HeaderRowCount + bodyCell.Row,
                     Column = bodyCell.Column,
                     Header = bodyCell.Text,
                     ColSpan = bodyCell.ColSpan,
                     RowSpan = bodyCell.RowSpan,
-                    IsHeader = false
+                    IsHeader = bodyCell.IsHeader
                 });
             }
+
+            context.Table.TableItems = BuildTableItemsFromStructure(context.Table.Id, structure);
 
             if (refreshAfterSave)
             {
@@ -3058,6 +3547,41 @@ namespace Project_bpi
 
             return structure.HeaderCells.Any(cell => !string.IsNullOrWhiteSpace(cell.Text))
                 || structure.BodyCells.Any(cell => !string.IsNullOrWhiteSpace(cell.Text));
+        }
+
+        private List<TableItem> BuildTableItemsFromStructure(int tableId, TableStructure structure)
+        {
+            var items = new List<TableItem>();
+
+            foreach (var headerCell in structure.HeaderCells)
+            {
+                items.Add(new TableItem
+                {
+                    TableId = tableId,
+                    Row = headerCell.Row,
+                    Column = headerCell.Column,
+                    Header = headerCell.Text,
+                    ColSpan = headerCell.ColSpan,
+                    RowSpan = headerCell.RowSpan,
+                    IsHeader = headerCell.IsHeader
+                });
+            }
+
+            foreach (var bodyCell in structure.BodyCells)
+            {
+                items.Add(new TableItem
+                {
+                    TableId = tableId,
+                    Row = structure.HeaderRowCount + bodyCell.Row,
+                    Column = bodyCell.Column,
+                    Header = bodyCell.Text,
+                    ColSpan = bodyCell.ColSpan,
+                    RowSpan = bodyCell.RowSpan,
+                    IsHeader = bodyCell.IsHeader
+                });
+            }
+
+            return items;
         }
 
         private void MergeTableCellsButton_Click(object sender, RoutedEventArgs e)
@@ -3174,30 +3698,61 @@ namespace Project_bpi
             bool hasExplicitHeaderItems = items.Any(item => item.IsHeader);
             if (hasExplicitHeaderItems)
             {
-                foreach (var headerItem in items.Where(item => item.IsHeader))
+                bool isLegacyExplicitLayout = items.Any(item => !item.IsHeader && item.Row == 1);
+                if (isLegacyExplicitLayout)
                 {
-                    structure.HeaderCells.Add(new TableCellDefinition
+                    foreach (var headerItem in items.Where(item => item.IsHeader))
                     {
-                        Text = headerItem.Header ?? string.Empty,
-                        Column = headerItem.Column,
-                        Row = headerItem.Row,
-                        ColSpan = Math.Max(1, headerItem.ColSpan),
-                        RowSpan = Math.Max(1, headerItem.RowSpan),
-                        IsHeader = true
-                    });
-                }
+                        structure.HeaderCells.Add(new TableCellDefinition
+                        {
+                            Text = headerItem.Header ?? string.Empty,
+                            Column = headerItem.Column,
+                            Row = headerItem.Row,
+                            ColSpan = Math.Max(1, headerItem.ColSpan),
+                            RowSpan = Math.Max(1, headerItem.RowSpan),
+                            IsHeader = true
+                        });
+                    }
 
-                foreach (var bodyItem in items.Where(item => !item.IsHeader))
-                {
-                    structure.BodyCells.Add(new TableCellDefinition
+                    foreach (var bodyItem in items.Where(item => !item.IsHeader))
                     {
-                        Text = bodyItem.Header ?? string.Empty,
-                        Column = bodyItem.Column,
-                        Row = bodyItem.Row,
-                        ColSpan = Math.Max(1, bodyItem.ColSpan),
-                        RowSpan = Math.Max(1, bodyItem.RowSpan),
-                        IsHeader = false
-                    });
+                        structure.BodyCells.Add(new TableCellDefinition
+                        {
+                            Text = bodyItem.Header ?? string.Empty,
+                            Column = bodyItem.Column,
+                            Row = bodyItem.Row,
+                            ColSpan = Math.Max(1, bodyItem.ColSpan),
+                            RowSpan = Math.Max(1, bodyItem.RowSpan),
+                            IsHeader = false
+                        });
+                    }
+                }
+                else
+                {
+                    int headerRowCount = Math.Max(1, CountLeadingHeaderRows(items));
+
+                    foreach (var item in items)
+                    {
+                        var cell = new TableCellDefinition
+                        {
+                            Text = item.Header ?? string.Empty,
+                            Column = item.Column,
+                            Row = item.Row,
+                            ColSpan = Math.Max(1, item.ColSpan),
+                            RowSpan = Math.Max(1, item.RowSpan),
+                            IsHeader = item.IsHeader
+                        };
+
+                        if (item.Row <= headerRowCount)
+                        {
+                            structure.HeaderCells.Add(cell);
+                        }
+                        else
+                        {
+                            cell.Row = item.Row - headerRowCount;
+                            structure.BodyCells.Add(cell);
+                        }
+                    }
                 }
             }
             else
@@ -3246,6 +3801,33 @@ namespace Project_bpi
             }
 
             return NormalizeTableStructure(structure);
+        }
+
+        private int CountLeadingHeaderRows(IReadOnlyCollection<TableItem> items)
+        {
+            if (items == null || items.Count == 0)
+            {
+                return 0;
+            }
+
+            int maxRow = items.Max(item => item.Row + Math.Max(1, item.RowSpan) - 1);
+            int headerRows = 0;
+
+            for (int row = 1; row <= maxRow; row++)
+            {
+                var rowItems = items
+                    .Where(item => item.Row <= row && row < item.Row + Math.Max(1, item.RowSpan))
+                    .ToList();
+
+                if (!rowItems.Any() || rowItems.Any(item => !item.IsHeader))
+                {
+                    break;
+                }
+
+                headerRows = row;
+            }
+
+            return headerRows;
         }
 
         private TableStructure ParseTableInput(string headersText, string rowsText)
@@ -3348,7 +3930,6 @@ namespace Project_bpi
         private UIElement CreateStyledTablePreview(TableStructure structure)
         {
             int columnCount = structure.ColumnCount;
-            bool hasAutoNumberRow = ShouldShowAutoNumberRow(structure);
 
             if (columnCount == 0)
             {
@@ -3374,13 +3955,7 @@ namespace Project_bpi
             if (structure.HeaderRowCount > 0)
             {
                 var headerGrid = new Grid();
-                for (int index = 0; index < columnCount; index++)
-                {
-                    headerGrid.ColumnDefinitions.Add(new ColumnDefinition
-                    {
-                        Width = index == 0 ? new GridLength(50) : new GridLength(1, GridUnitType.Star)
-                    });
-                }
+                ConfigurePreviewTableColumns(headerGrid, columnCount);
 
                 for (int rowIndex = 0; rowIndex < structure.HeaderRowCount; rowIndex++)
                 {
@@ -3391,21 +3966,10 @@ namespace Project_bpi
                 panel.Children.Add(headerGrid);
             }
 
-            if (hasAutoNumberRow)
-            {
-                panel.Children.Add(CreateAutoNumberRowGrid(columnCount));
-            }
-
             if (structure.BodyRowCount > 0)
             {
                 var bodyGrid = new Grid();
-                for (int index = 0; index < columnCount; index++)
-                {
-                    bodyGrid.ColumnDefinitions.Add(new ColumnDefinition
-                    {
-                        Width = index == 0 ? new GridLength(50) : new GridLength(1, GridUnitType.Star)
-                    });
-                }
+                ConfigurePreviewTableColumns(bodyGrid, columnCount);
 
                 for (int rowIndex = 0; rowIndex < structure.BodyRowCount; rowIndex++)
                 {
@@ -3425,41 +3989,14 @@ namespace Project_bpi
             };
         }
 
-        private bool ShouldShowAutoNumberRow(TableStructure structure)
+        private void ConfigurePreviewTableColumns(Grid grid, int columnCount)
         {
-            return structure != null
-                && structure.HeaderRowCount > 0
-                && structure.ColumnCount > 0;
-        }
-
-        private Grid CreateAutoNumberRowGrid(int columnCount)
-        {
-            var grid = new Grid
-            {
-                Background = Brushes.White
-            };
-
             for (int index = 0; index < columnCount; index++)
             {
                 grid.ColumnDefinitions.Add(new ColumnDefinition
                 {
                     Width = index == 0 ? new GridLength(50) : new GridLength(1, GridUnitType.Star)
                 });
-            }
-
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            AddAutoNumberRowToGrid(grid, 0, columnCount, 0);
-            return grid;
-        }
-
-        private void AddAutoNumberRowToGrid(Grid grid, int gridRowIndex, int columnCount, int columnOffset)
-        {
-            for (int column = 1; column <= columnCount; column++)
-            {
-                var numberBorder = CreateAutoNumberCellBorder(column.ToString());
-                Grid.SetRow(numberBorder, gridRowIndex);
-                Grid.SetColumn(numberBorder, columnOffset + column - 1);
-                grid.Children.Add(numberBorder);
             }
         }
 
@@ -3474,7 +4011,7 @@ namespace Project_bpi
 
             foreach (var cell in cells)
             {
-                var border = CreateTableCellBorder(cell.Text, isHeader);
+                var border = CreateTableCellBorder(cell.Text, cell.IsHeader);
                 Grid.SetRow(border, cell.Row - 1);
                 Grid.SetColumn(border, cell.Column - 1);
                 Grid.SetColumnSpan(border, cell.ColSpan);
@@ -3552,27 +4089,6 @@ namespace Project_bpi
                     TextAlignment = TextAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                     TextWrapping = TextWrapping.Wrap
-                }
-            };
-        }
-
-        private Border CreateAutoNumberCellBorder(string text)
-        {
-            return new Border
-            {
-                BorderBrush = Brushes.Black,
-                BorderThickness = new Thickness(0, 0, 1, 1),
-                Padding = new Thickness(8, 6, 8, 6),
-                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#f8f9fa")),
-                Child = new TextBlock
-                {
-                    Text = text,
-                    FontSize = 10,
-                    FontWeight = FontWeights.Bold,
-                    Foreground = Brushes.Black,
-                    TextAlignment = TextAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextWrapping = TextWrapping.NoWrap
                 }
             };
         }
@@ -3707,10 +4223,10 @@ namespace Project_bpi
 
             foreach (var cell in structure.HeaderCells
                 .Concat(structure.BodyCells)
-                .OrderBy(c => GetDisplayRow(c, structure.HeaderRowCount))
+                .OrderBy(c => GetDisplayRow(structure, c))
                 .ThenBy(c => c.Column))
             {
-                int displayRow = GetDisplayRow(cell, structure.HeaderRowCount);
+                int displayRow = GetDisplayRow(structure, cell);
                 var toggle = new ToggleButton
                 {
                     Content = new TextBlock
@@ -3850,9 +4366,11 @@ namespace Project_bpi
             return merged;
         }
 
-        private int GetDisplayRow(TableCellDefinition cell, int headerRowCount)
+        private int GetDisplayRow(TableStructure structure, TableCellDefinition cell)
         {
-            return cell.IsHeader ? cell.Row : headerRowCount + cell.Row;
+            return structure?.HeaderCells.Contains(cell) == true
+                ? cell.Row
+                : (structure?.HeaderRowCount ?? 0) + cell.Row;
         }
 
         private bool TryMergeTableCells(TableStructure structure, List<TableCellDefinition> selectedCells, out string errorMessage)
@@ -3865,8 +4383,12 @@ namespace Project_bpi
                 return false;
             }
 
-            bool isHeaderSelection = selectedCells[0].IsHeader;
-            if (selectedCells.Any(cell => cell.IsHeader != isHeaderSelection))
+            bool isHeaderSelection = structure.HeaderCells.Contains(selectedCells[0]);
+            bool isBodySelection = structure.BodyCells.Contains(selectedCells[0]);
+
+            if (selectedCells.Any(cell =>
+                    structure.HeaderCells.Contains(cell) != isHeaderSelection ||
+                    structure.BodyCells.Contains(cell) != isBodySelection))
             {
                 errorMessage = "Нельзя объединять вместе ячейки шапки и строки данных.";
                 return false;
@@ -3904,9 +4426,7 @@ namespace Project_bpi
             topLeftCell.ColSpan = maxColumn - minColumn + 1;
             topLeftCell.RowSpan = maxRow - minRow + 1;
 
-            var targetCollection = isHeaderSelection
-                ? structure.HeaderCells
-                : structure.BodyCells;
+            var targetCollection = isHeaderSelection ? structure.HeaderCells : structure.BodyCells;
 
             foreach (var cell in selectedCells.Where(cell => !ReferenceEquals(cell, topLeftCell)).ToList())
             {
