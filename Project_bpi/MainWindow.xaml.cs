@@ -26,6 +26,7 @@ namespace Project_bpi
         private const string SectionContentSubSectionTitle = "__section_content__";
         private const string StudyReportTitle = "Учебный отчет";
         private const string NirReportTitle = "Отчет по НИР";
+        private const string NirPublishingTablePatternName = "nir_3_1_table";
         private const string StudyReportSuppressionKey = "builtin:study_report";
         private const string NirReportSuppressionKey = "builtin:nir_report";
         private const string HistoryActionCreate = "create";
@@ -203,6 +204,15 @@ namespace Project_bpi
 
             public bool HasSettings =>
                 !string.IsNullOrWhiteSpace(SearchText) || SortMode != TableColumnSortMode.None;
+        }
+
+        private sealed class Table7ExportRow
+        {
+            public string Number { get; set; }
+            public string WorkName { get; set; }
+            public string Performers { get; set; }
+            public string PublicationType { get; set; }
+            public string Volume { get; set; }
         }
 
         public MainWindow()
@@ -2358,6 +2368,19 @@ namespace Project_bpi
                 addRowButton.Tag = context;
                 addRowButton.Click += AddTableRowButton_Click;
                 buttons.Children.Add(addRowButton);
+
+                if (CanImportNirPublishingTable(context))
+                {
+                    var importButton = CreateSecondaryButton("Импортировать таблицу");
+                    importButton.Tag = context;
+                    importButton.Click += ImportTableFromExcelButton_Click;
+                    buttons.Children.Add(importButton);
+
+                    var exportTable7Button = CreateSecondaryButton("Экспортировать в таблицу 7");
+                    exportTable7Button.Tag = context;
+                    exportTable7Button.Click += ExportToTable7Button_Click;
+                    buttons.Children.Add(exportTable7Button);
+                }
 
                 var saveButton = CreateActionButton("Сохранить таблицу");
                 saveButton.Tag = context;
@@ -5105,6 +5128,188 @@ namespace Project_bpi
             }
         }
 
+        private void ExportToTable7Button_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is Button button) || !(button.Tag is TableEditorContext context))
+            {
+                return;
+            }
+
+            try
+            {
+                var rows = BuildTable7ExportRows(context);
+                if (!rows.Any())
+                {
+                    MessageBox.Show(
+                        "В таблице нет данных для экспорта в таблицу 7.",
+                        "Таблица",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+
+                string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                string fileName = $"publishPlan_{DateTime.Now:yyyyMMdd_HHmmss}.xls";
+                string outputPath = Path.Combine(desktopPath, fileName);
+
+                File.WriteAllText(outputPath, BuildTable7SpreadsheetXml(rows), new System.Text.UTF8Encoding(false));
+
+                MessageBox.Show(
+                    $"Файл сохранен:{Environment.NewLine}{outputPath}",
+                    "Таблица 7",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось экспортировать в таблицу 7:{Environment.NewLine}{ex.Message}",
+                    "Таблица 7",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private List<Table7ExportRow> BuildTable7ExportRows(TableEditorContext context)
+        {
+            EnsureEditableTableStructure(context.Structure);
+
+            var result = new List<Table7ExportRow>();
+            for (int bodyRow = 1; bodyRow <= Math.Max(0, context.Structure.BodyRowCount); bodyRow++)
+            {
+                string workName = GetBodyCellText(context.Structure, bodyRow, 4);
+                string performers = GetBodyCellText(context.Structure, bodyRow, 3);
+                string publicationType = GetBodyCellText(context.Structure, bodyRow, 5);
+                string editionInfo = GetBodyCellText(context.Structure, bodyRow, 6);
+
+                if (string.IsNullOrWhiteSpace(workName) &&
+                    string.IsNullOrWhiteSpace(performers) &&
+                    string.IsNullOrWhiteSpace(publicationType) &&
+                    string.IsNullOrWhiteSpace(editionInfo))
+                {
+                    continue;
+                }
+
+                result.Add(new Table7ExportRow
+                {
+                    Number = (result.Count + 1).ToString(CultureInfo.InvariantCulture),
+                    WorkName = workName,
+                    Performers = performers,
+                    PublicationType = publicationType,
+                    Volume = CalculateTable7Volume(editionInfo)
+                });
+            }
+
+            return result;
+        }
+
+        private string CalculateTable7Volume(string editionInfo)
+        {
+            string text = (editionInfo ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            var match = Regex.Match(
+                text,
+                @"с\.\s*(\d+)\s*[-–—]\s*(\d+)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!match.Success ||
+                !int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int startPage) ||
+                !int.TryParse(match.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int endPage) ||
+                endPage <= startPage)
+            {
+                return string.Empty;
+            }
+
+            decimal volume = Math.Round((endPage - startPage) / 16m, 1, MidpointRounding.AwayFromZero);
+            return volume.ToString("0.0", CultureInfo.GetCultureInfo("ru-RU"));
+        }
+
+        private string BuildTable7SpreadsheetXml(IReadOnlyList<Table7ExportRow> rows)
+        {
+            string Escape(string value) => System.Security.SecurityElement.Escape(value ?? string.Empty) ?? string.Empty;
+
+            void AppendCell(System.Text.StringBuilder xmlBuilder, int index, string styleId, string value, bool mergeDiscipline = false)
+            {
+                xmlBuilder.Append("<Cell ss:Index=\"")
+                    .Append(index)
+                    .Append("\" ss:StyleID=\"")
+                    .Append(styleId)
+                    .Append("\"");
+
+                if (mergeDiscipline)
+                {
+                    xmlBuilder.Append(" ss:MergeAcross=\"1\"");
+                }
+
+                xmlBuilder.Append("><Data ss:Type=\"String\">")
+                    .Append(Escape(value))
+                    .Append("</Data></Cell>");
+            }
+
+            var builder = new System.Text.StringBuilder();
+            builder.Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+                .Append("<?mso-application progid=\"Excel.Sheet\"?>")
+                .Append("<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\" ")
+                .Append("xmlns:o=\"urn:schemas-microsoft-com:office:office\" ")
+                .Append("xmlns:x=\"urn:schemas-microsoft-com:office:excel\" ")
+                .Append("xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\" ")
+                .Append("xmlns:html=\"http://www.w3.org/TR/REC-html40\">")
+                .Append("<Styles>")
+                .Append("<Style ss:ID=\"20\"><Alignment ss:Horizontal=\"Center\" ss:Vertical=\"Top\" ss:WrapText=\"1\"/><Borders><Border ss:Position=\"Bottom\"/><Border ss:Position=\"Top\"/><Border ss:Position=\"Left\"/><Border ss:Position=\"Right\"/><Border ss:Position=\"DiagonalLeft\"/></Borders><Font ss:FontName=\"Times New Roman\" ss:Size=\"12.0\" ss:Bold=\"1\" ss:Color=\"#000000\"/></Style>")
+                .Append("<Style ss:ID=\"22\"><Alignment ss:Horizontal=\"Center\" ss:Vertical=\"Top\" ss:WrapText=\"1\"/><Borders><Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\" ss:Color=\"#000000\"/><Border ss:Position=\"Top\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\" ss:Color=\"#000000\"/><Border ss:Position=\"Left\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\" ss:Color=\"#000000\"/><Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\" ss:Color=\"#000000\"/><Border ss:Position=\"DiagonalLeft\"/></Borders><Font ss:FontName=\"Times New Roman\" ss:Size=\"12.0\" ss:Color=\"#000000\"/></Style>")
+                .Append("<Style ss:ID=\"31\"><Alignment ss:Horizontal=\"Left\" ss:Vertical=\"Top\" ss:WrapText=\"1\"/><Borders><Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\" ss:Color=\"#000000\"/><Border ss:Position=\"Top\"/><Border ss:Position=\"Left\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\" ss:Color=\"#000000\"/><Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\" ss:Color=\"#000000\"/><Border ss:Position=\"DiagonalLeft\"/></Borders><Font ss:FontName=\"sans-serif\" ss:Size=\"12.0\" ss:Color=\"#000000\"/></Style>")
+                .Append("<Style ss:ID=\"32\"><Alignment ss:Horizontal=\"Left\" ss:Vertical=\"Top\" ss:WrapText=\"1\"/><Borders><Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\" ss:Color=\"#000000\"/><Border ss:Position=\"Top\"/><Border ss:Position=\"Left\"/><Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\" ss:Color=\"#000000\"/><Border ss:Position=\"DiagonalLeft\"/></Borders><Font ss:FontName=\"sans-serif\" ss:Size=\"12.0\" ss:Color=\"#000000\"/></Style>")
+                .Append("</Styles>")
+                .Append("<Worksheet ss:Name=\"Report\"><Table>")
+                .Append("<Column ss:Width=\"21.632\" ss:AutoFitWidth=\"0\"/>")
+                .Append("<Column ss:Width=\"172.544\" ss:AutoFitWidth=\"0\"/>")
+                .Append("<Column ss:Width=\"105.728\" ss:AutoFitWidth=\"0\"/>")
+                .Append("<Column ss:Width=\"89.216\" ss:AutoFitWidth=\"0\"/>")
+                .Append("<Column ss:Width=\"54.784\" ss:AutoFitWidth=\"0\"/>")
+                .Append("<Column ss:Width=\"58.496\" ss:AutoFitWidth=\"0\"/>")
+                .Append("<Column ss:Width=\"51.84\" ss:AutoFitWidth=\"0\"/>")
+                .Append("<Column ss:Width=\"116.224\" ss:AutoFitWidth=\"0\"/>")
+                .Append("<Column ss:Width=\"135.424\" ss:AutoFitWidth=\"0\"/>")
+                .Append("<Column ss:Width=\"22.784\" ss:AutoFitWidth=\"0\"/>")
+                .Append("<Column ss:Width=\"73.472\" ss:AutoFitWidth=\"0\"/>")
+                .Append("<Row ss:AutoFitHeight=\"1\"><Cell ss:Index=\"1\" ss:StyleID=\"20\" ss:MergeAcross=\"8\"><Data ss:Type=\"String\">7. План учебно-издательской деятельности</Data></Cell></Row>")
+                .Append("<Row ss:AutoFitHeight=\"1\">");
+
+            AppendCell(builder, 1, "22", "№");
+            AppendCell(builder, 2, "22", "Наименование работ");
+            AppendCell(builder, 3, "22", "Исполнители");
+            AppendCell(builder, 4, "22", "Обоснование необходимости");
+            AppendCell(builder, 5, "22", "Вид издания");
+            AppendCell(builder, 6, "22", "Объем в уч.-изд. (листах)");
+            AppendCell(builder, 7, "22", "Тираж");
+            AppendCell(builder, 8, "22", "Наименование направления (специальности)");
+            AppendCell(builder, 9, "22", "Дисциплина", true);
+            AppendCell(builder, 11, "22", "Срок готовности");
+            builder.Append("</Row>");
+
+            foreach (var row in rows)
+            {
+                builder.Append("<Row ss:AutoFitHeight=\"1\">");
+                AppendCell(builder, 1, "31", row.Number);
+                AppendCell(builder, 2, "32", row.WorkName);
+                AppendCell(builder, 3, "32", row.Performers);
+                AppendCell(builder, 4, "32", string.Empty);
+                AppendCell(builder, 5, "32", row.PublicationType);
+                AppendCell(builder, 6, "32", row.Volume);
+                AppendCell(builder, 7, "32", string.Empty);
+                AppendCell(builder, 8, "32", string.Empty);
+                AppendCell(builder, 9, "32", string.Empty, true);
+                AppendCell(builder, 11, "32", string.Empty);
+                builder.Append("</Row>");
+            }
+
+            builder.Append("</Table></Worksheet></Workbook>");
+            return builder.ToString();
+        }
+
         private async void ClearTableContentButton_Click(object sender, RoutedEventArgs e)
         {
             if (!(sender is Button button) || !(button.Tag is TableEditorContext context))
@@ -5137,7 +5342,72 @@ namespace Project_bpi
             await SaveTableAsync(context, false);
         }
 
-        private void ImportTableFromExcelButton_Click(object sender, RoutedEventArgs e)
+        private static bool CanImportNirPublishingTable(TableEditorContext context)
+        {
+            return string.Equals(context?.Table?.PatternName, NirPublishingTablePatternName, StringComparison.Ordinal);
+        }
+
+        private void ApplyImportedRowsToTable(TableEditorContext context, IReadOnlyList<string[]> importedRows)
+        {
+            if (context.Structure == null)
+            {
+                context.Structure = new TableStructure();
+            }
+
+            EnsureEditableTableStructure(context.Structure);
+            context.Structure.ColumnCount = Math.Max(context.Structure.ColumnCount, 7);
+            context.Structure.BodyCells.Clear();
+            context.Structure.BodyRowCount = importedRows?.Count ?? 0;
+            context.ColumnFilters.Clear();
+
+            if (importedRows == null)
+            {
+                return;
+            }
+
+            for (int rowIndex = 0; rowIndex < importedRows.Count; rowIndex++)
+            {
+                string[] rowValues = importedRows[rowIndex] ?? Array.Empty<string>();
+                for (int columnIndex = 0; columnIndex < 7; columnIndex++)
+                {
+                    context.Structure.BodyCells.Add(new TableCellDefinition
+                    {
+                        Row = rowIndex + 1,
+                        Column = columnIndex + 1,
+                        Text = columnIndex < rowValues.Length ? rowValues[columnIndex] ?? string.Empty : string.Empty,
+                        IsHeader = false
+                    });
+                }
+            }
+        }
+
+        private async Task ImportNirPublishingTableAsync(TableEditorContext context, string fileName)
+        {
+            var importedRows = ExcelTableExchangeService.ImportNirPublishingRows(fileName);
+            if (importedRows == null || importedRows.Count == 0)
+            {
+                MessageBox.Show(
+                    "В выбранном Excel-файле не найдено строк для импорта в столбцах 6-12.",
+                    "Таблица",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            ApplyImportedRowsToTable(context, importedRows);
+            RefreshTableEditor(context);
+
+            if (await SaveTableAsync(context, false))
+            {
+                MessageBox.Show(
+                    "Таблица импортирована и сохранена.",
+                    "Таблица",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+        }
+
+        private async void ImportTableFromExcelButton_Click(object sender, RoutedEventArgs e)
         {
             if (!(sender is Button button) || !(button.Tag is TableEditorContext context))
             {
@@ -5159,6 +5429,12 @@ namespace Project_bpi
 
             try
             {
+                if (CanImportNirPublishingTable(context))
+                {
+                    await ImportNirPublishingTableAsync(context, openDialog.FileName);
+                    return;
+                }
+
                 var imported = ExcelTableExchangeService.Import(openDialog.FileName);
                 context.Structure = ConvertFromExcelTableData(imported);
 

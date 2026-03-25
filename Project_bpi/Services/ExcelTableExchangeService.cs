@@ -52,6 +52,18 @@ namespace Project_bpi.Services
             public int RowSpan { get; set; } = 1;
         }
 
+        private static readonly int[] NirPublishingSourceColumns = { 6, 7, 8, 9, 10, 11, 12 };
+        private static readonly string[] NirPublishingHeaderKeywords =
+        {
+            "№",
+            "доля авторов",
+            "фамилия",
+            "наименование публикации",
+            "тип публикации",
+            "наименование издания",
+            "место издания"
+        };
+
         public static void Export(string outputPath, ExcelTableData tableData)
         {
             if (tableData == null)
@@ -107,7 +119,8 @@ namespace Project_bpi.Services
 
         public static ExcelTableData Import(string inputPath)
         {
-            using (var package = Package.Open(inputPath, FileMode.Open, FileAccess.Read))
+            using (var stream = new FileStream(inputPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var package = Package.Open(stream, FileMode.Open, FileAccess.Read))
             {
                 var workbookRelationship = package.GetRelationshipsByType(PackageRelationshipType).FirstOrDefault();
                 if (workbookRelationship == null)
@@ -121,13 +134,13 @@ namespace Project_bpi.Services
                 var workbookRelationships = workbookPart.GetRelationships()
                     .Select(item => (item.RelationshipType, PackUriHelper.ResolvePartUri(workbookPart.Uri, item.TargetUri)))
                     .ToList();
-                var worksheetRelationship = workbookRelationships.FirstOrDefault(item => item.RelationshipType == WorksheetRelationshipType);
-                if (worksheetRelationship.Item2 == null)
+                var worksheetParts = GetWorksheetPartsInWorkbookOrder(package, workbookPart, workbookRelationships);
+                var worksheetPart = worksheetParts.FirstOrDefault();
+                if (worksheetPart == null)
                 {
                     throw new InvalidOperationException("Файл Excel не содержит лист с данными.");
                 }
 
-                var worksheetPart = package.GetPart(worksheetRelationship.Item2);
                 var sharedStringsPart = workbookRelationships
                     .Where(item => item.RelationshipType == SharedStringsRelationshipType)
                     .Select(item => package.GetPart(item.Item2))
@@ -138,6 +151,73 @@ namespace Project_bpi.Services
                     : new List<string>();
 
                 return ParseWorksheet(worksheetPart, sharedStrings);
+            }
+        }
+
+        public static List<string[]> ImportNirPublishingRows(string inputPath)
+        {
+            using (var stream = new FileStream(inputPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var package = Package.Open(stream, FileMode.Open, FileAccess.Read))
+            {
+                var workbookRelationship = package.GetRelationshipsByType(PackageRelationshipType).FirstOrDefault();
+                if (workbookRelationship == null)
+                {
+                    throw new InvalidOperationException("Файл Excel не содержит книгу.");
+                }
+
+                var workbookUri = PackUriHelper.ResolvePartUri(new Uri("/", UriKind.Relative), workbookRelationship.TargetUri);
+                var workbookPart = package.GetPart(workbookUri);
+
+                var workbookRelationships = workbookPart.GetRelationships()
+                    .Select(item => (item.RelationshipType, PackUriHelper.ResolvePartUri(workbookPart.Uri, item.TargetUri)))
+                    .ToList();
+                var worksheetParts = GetWorksheetPartsInWorkbookOrder(package, workbookPart, workbookRelationships);
+                if (worksheetParts.Count == 0)
+                {
+                    throw new InvalidOperationException("Файл Excel не содержит лист с данными.");
+                }
+
+                var sharedStringsPart = workbookRelationships
+                    .Where(item => item.RelationshipType == SharedStringsRelationshipType)
+                    .Select(item => package.GetPart(item.Item2))
+                    .FirstOrDefault();
+
+                List<string> sharedStrings = sharedStringsPart != null
+                    ? LoadSharedStrings(sharedStringsPart)
+                    : new List<string>();
+                foreach (var worksheetPart in worksheetParts)
+                {
+                    List<WorksheetCellRecord> records = LoadWorksheetRecords(worksheetPart, sharedStrings);
+                    int headerRow = FindHeaderRow(records, NirPublishingSourceColumns, NirPublishingHeaderKeywords);
+                    if (headerRow <= 0)
+                    {
+                        continue;
+                    }
+
+                    var result = new List<string[]>();
+                    foreach (var rowGroup in records
+                        .GroupBy(item => item.Row)
+                        .Where(group => group.Key > headerRow)
+                        .OrderBy(group => group.Key))
+                    {
+                        var values = NirPublishingSourceColumns
+                            .Select(column => NormalizeImportedText(
+                                rowGroup.FirstOrDefault(item => item.Column == column)?.Text))
+                            .ToArray();
+
+                        if (values.Any(value => !string.IsNullOrWhiteSpace(value)))
+                        {
+                            result.Add(values);
+                        }
+                    }
+
+                    if (result.Any())
+                    {
+                        return result;
+                    }
+                }
+
+                throw new InvalidOperationException("Не удалось найти шапку таблицы в столбцах 6-12 Excel-файла.");
             }
         }
 
@@ -334,6 +414,119 @@ namespace Project_bpi.Services
                 .ToList();
         }
 
+        private static List<PackagePart> GetWorksheetPartsInWorkbookOrder(
+            Package package,
+            PackagePart workbookPart,
+            List<(string RelationshipType, Uri Item2)> workbookRelationships)
+        {
+            var relationshipById = workbookPart.GetRelationships()
+                .ToDictionary(
+                    item => item.Id,
+                    item => PackUriHelper.ResolvePartUri(workbookPart.Uri, item.TargetUri),
+                    StringComparer.Ordinal);
+
+            var workbookDocument = new XmlDocument();
+            using (var stream = workbookPart.GetStream(FileMode.Open, FileAccess.Read))
+            {
+                workbookDocument.Load(stream);
+            }
+
+            var manager = new XmlNamespaceManager(workbookDocument.NameTable);
+            manager.AddNamespace("x", "http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+
+            var worksheetUris = new List<Uri>();
+            foreach (XmlNode sheetNode in workbookDocument.SelectNodes("//x:sheets/x:sheet", manager))
+            {
+                string relationshipId = sheetNode.Attributes?["id", "http://schemas.openxmlformats.org/officeDocument/2006/relationships"]?.Value;
+                if (string.IsNullOrWhiteSpace(relationshipId))
+                {
+                    continue;
+                }
+
+                if (relationshipById.TryGetValue(relationshipId, out var worksheetUri))
+                {
+                    worksheetUris.Add(worksheetUri);
+                }
+            }
+
+            if (!worksheetUris.Any())
+            {
+                worksheetUris = workbookRelationships
+                    .Where(item => item.RelationshipType == WorksheetRelationshipType)
+                    .Select(item => item.Item2)
+                    .ToList();
+            }
+
+            return worksheetUris
+                .Distinct()
+                .Where(package.PartExists)
+                .Select(package.GetPart)
+                .ToList();
+        }
+
+        private static List<WorksheetCellRecord> LoadWorksheetRecords(PackagePart worksheetPart, List<string> sharedStrings)
+        {
+            var document = new XmlDocument();
+            using (var stream = worksheetPart.GetStream(FileMode.Open, FileAccess.Read))
+            {
+                document.Load(stream);
+            }
+
+            var manager = new XmlNamespaceManager(document.NameTable);
+            manager.AddNamespace("x", "http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+
+            var records = new List<WorksheetCellRecord>();
+            foreach (XmlNode cellNode in document.SelectNodes("//x:sheetData/x:row/x:c", manager))
+            {
+                string cellReference = cellNode.Attributes?["r"]?.Value;
+                if (string.IsNullOrWhiteSpace(cellReference))
+                {
+                    continue;
+                }
+
+                GetCoordinates(cellReference, out int row, out int column);
+
+                string cellType = cellNode.Attributes?["t"]?.Value ?? string.Empty;
+                int styleIndex = 0;
+                int.TryParse(cellNode.Attributes?["s"]?.Value, out styleIndex);
+
+                records.Add(new WorksheetCellRecord
+                {
+                    Row = row,
+                    Column = column,
+                    Text = ReadCellText(cellNode, manager, cellType, sharedStrings),
+                    StyleIndex = styleIndex
+                });
+            }
+
+            foreach (XmlNode mergeNode in document.SelectNodes("//x:mergeCells/x:mergeCell", manager))
+            {
+                string reference = mergeNode.Attributes?["ref"]?.Value;
+                if (string.IsNullOrWhiteSpace(reference))
+                {
+                    continue;
+                }
+
+                string[] parts = reference.Split(':');
+                if (parts.Length != 2)
+                {
+                    continue;
+                }
+
+                GetCoordinates(parts[0], out int startRow, out int startColumn);
+                GetCoordinates(parts[1], out int endRow, out int endColumn);
+
+                var topLeftCell = records.FirstOrDefault(item => item.Row == startRow && item.Column == startColumn);
+                if (topLeftCell != null)
+                {
+                    topLeftCell.ColSpan = Math.Max(1, endColumn - startColumn + 1);
+                    topLeftCell.RowSpan = Math.Max(1, endRow - startRow + 1);
+                }
+            }
+
+            return records;
+        }
+
         private static ExcelTableData ParseWorksheet(PackagePart worksheetPart, List<string> sharedStrings)
         {
             var document = new XmlDocument();
@@ -519,6 +712,79 @@ namespace Project_bpi.Services
             }
 
             return cellNode.SelectSingleNode("x:v", manager)?.InnerText ?? string.Empty;
+        }
+
+        private static int FindHeaderRow(
+            IReadOnlyCollection<WorksheetCellRecord> records,
+            IReadOnlyList<int> sourceColumns,
+            IReadOnlyList<string> headerKeywords)
+        {
+            int bestScore = 0;
+            int bestRow = 0;
+
+            foreach (var rowGroup in records.GroupBy(item => item.Row).OrderBy(item => item.Key))
+            {
+                int score = 0;
+                for (int index = 0; index < sourceColumns.Count && index < headerKeywords.Count; index++)
+                {
+                    string cellText = rowGroup.FirstOrDefault(item => item.Column == sourceColumns[index])?.Text;
+                    if (IsHeaderMatch(cellText, headerKeywords[index]))
+                    {
+                        score++;
+                    }
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestRow = rowGroup.Key;
+                }
+
+                if (score == headerKeywords.Count)
+                {
+                    return rowGroup.Key;
+                }
+            }
+
+            return bestScore >= Math.Max(4, headerKeywords.Count - 2) ? bestRow : 0;
+        }
+
+        private static bool IsHeaderMatch(string value, string keyword)
+        {
+            string normalizedValue = NormalizeHeaderMatchText(value);
+            string normalizedKeyword = NormalizeHeaderMatchText(keyword);
+            return !string.IsNullOrWhiteSpace(normalizedValue) &&
+                   !string.IsNullOrWhiteSpace(normalizedKeyword) &&
+                   normalizedValue.Contains(normalizedKeyword);
+        }
+
+        private static string NormalizeHeaderMatchText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string normalized = value
+                .Replace('\u00A0', ' ')
+                .Replace('\u0451', '\u0435')
+                .Replace('\u0401', '\u0415')
+                .ToLowerInvariant();
+
+            normalized = Regex.Replace(normalized, @"\s+", " ");
+            return normalized.Trim();
+        }
+
+        private static string NormalizeImportedText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string normalized = value.Replace('\u00A0', ' ');
+            normalized = Regex.Replace(normalized, @"\s+", " ");
+            return normalized.Trim();
         }
 
         private static string GetInnerText(XmlNode node)
