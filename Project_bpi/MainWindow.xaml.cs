@@ -5339,16 +5339,97 @@ namespace Project_bpi
             }
 
             string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-            string fileName = $"publishPlan_{DateTime.Now:yyyyMMdd_HHmmss}.xls";
+            string fileName = $"publishPlan_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
             string outputPath = Path.Combine(desktopPath, fileName);
 
-            File.WriteAllText(outputPath, BuildTable7SpreadsheetXml(rows), new System.Text.UTF8Encoding(false));
+            ExcelTableExchangeService.Export(outputPath, BuildStudyPublishingPlanExcelData(rows));
 
             MessageBox.Show(
                 $"Файл сохранен:{Environment.NewLine}{outputPath}",
                 "Таблица 7",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
+        }
+
+        private ExcelTableData BuildStudyPublishingPlanExcelData(IReadOnlyList<Table7ExportRow> rows)
+        {
+            var tableData = new ExcelTableData
+            {
+                ColumnCount = 11,
+                HeaderRowCount = 2,
+                BodyRowCount = rows?.Count ?? 0
+            };
+
+            double[] columnWidths =
+            {
+                6, 28, 18, 15, 10, 10, 9, 20, 24, 24, 14
+            };
+            for (int column = 1; column <= columnWidths.Length; column++)
+            {
+                tableData.ColumnWidths[column] = columnWidths[column - 1];
+            }
+
+            tableData.HeaderRowHeights[1] = 24;
+            tableData.HeaderRowHeights[2] = 46;
+
+            void AddHeaderCell(int row, int column, string text, int colSpan = 1, int rowSpan = 1, int? styleIndexOverride = null)
+            {
+                tableData.HeaderCells.Add(new ExcelTableCell
+                {
+                    Row = row,
+                    Column = column,
+                    Text = text ?? string.Empty,
+                    ColSpan = colSpan,
+                    RowSpan = rowSpan,
+                    IsHeader = true,
+                    StyleIndexOverride = styleIndexOverride
+                });
+            }
+
+            void AddBodyCell(int row, int column, string text)
+            {
+                tableData.BodyCells.Add(new ExcelTableCell
+                {
+                    Row = row,
+                    Column = column,
+                    Text = text ?? string.Empty,
+                    IsHeader = false,
+                    StyleIndexOverride = 0
+                });
+            }
+
+            AddHeaderCell(1, 1, "7. План учебно-издательской деятельности", 11, 1, 2);
+            AddHeaderCell(2, 1, "№", 1, 1, 1);
+            AddHeaderCell(2, 2, "Наименование работ", 1, 1, 1);
+            AddHeaderCell(2, 3, "Исполнители", 1, 1, 1);
+            AddHeaderCell(2, 4, "Обоснование необходимости", 1, 1, 1);
+            AddHeaderCell(2, 5, "Вид издания", 1, 1, 1);
+            AddHeaderCell(2, 6, "Объем в уч.-изд. (листах)", 1, 1, 1);
+            AddHeaderCell(2, 7, "Тираж", 1, 1, 1);
+            AddHeaderCell(2, 8, "Наименование направления (специальности)", 1, 1, 1);
+            AddHeaderCell(2, 9, "Дисциплина", 2, 1, 1);
+            AddHeaderCell(2, 11, "Срок готовности", 1, 1, 1);
+
+            for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+            {
+                Table7ExportRow row = rows[rowIndex];
+                int targetRow = rowIndex + 1;
+                tableData.BodyRowHeights[targetRow] = 58;
+
+                AddBodyCell(targetRow, 1, row.Number);
+                AddBodyCell(targetRow, 2, row.WorkName);
+                AddBodyCell(targetRow, 3, row.Performers);
+                AddBodyCell(targetRow, 4, string.Empty);
+                AddBodyCell(targetRow, 5, row.PublicationType);
+                AddBodyCell(targetRow, 6, row.Volume);
+                AddBodyCell(targetRow, 7, string.Empty);
+                AddBodyCell(targetRow, 8, string.Empty);
+                AddBodyCell(targetRow, 9, string.Empty);
+                AddBodyCell(targetRow, 10, string.Empty);
+                AddBodyCell(targetRow, 11, string.Empty);
+            }
+
+            return tableData;
         }
 
         private void ExportToPublicationsListTemplate(TableEditorContext context)
@@ -5423,11 +5504,26 @@ namespace Project_bpi
             var tableData = new ExcelTableData
             {
                 ColumnCount = 17,
-                HeaderRowCount = 45,
+                HeaderRowCount = 5,
                 BodyRowCount = rows?.Count ?? 0
             };
 
-            void AddHeaderCell(int row, int column, string text, int colSpan = 1, int rowSpan = 1)
+            double[] columnWidths =
+            {
+                18, 18, 18, 12, 18, 8, 12, 26, 44, 24, 42, 28, 10, 10, 10, 10, 10
+            };
+            for (int column = 1; column <= columnWidths.Length; column++)
+            {
+                tableData.ColumnWidths[column] = columnWidths[column - 1];
+            }
+
+            tableData.HeaderRowHeights[1] = 24;
+            tableData.HeaderRowHeights[2] = 54;
+            tableData.HeaderRowHeights[3] = 22;
+            tableData.HeaderRowHeights[4] = 26;
+            tableData.HeaderRowHeights[5] = 82;
+
+            void AddHeaderCell(int row, int column, string text, int colSpan = 1, int rowSpan = 1, int? styleIndexOverride = null)
             {
                 tableData.HeaderCells.Add(new ExcelTableCell
                 {
@@ -5436,35 +5532,32 @@ namespace Project_bpi
                     Text = text ?? string.Empty,
                     ColSpan = colSpan,
                     RowSpan = rowSpan,
-                    IsHeader = true
+                    IsHeader = true,
+                    StyleIndexOverride = styleIndexOverride
                 });
             }
 
-            void AddBodyCell(int row, int column, string text)
+            void AddBodyCell(int row, int column, string text, int? styleIndexOverride = null)
             {
                 tableData.BodyCells.Add(new ExcelTableCell
                 {
                     Row = row,
                     Column = column,
                     Text = text ?? string.Empty,
-                    IsHeader = false
+                    IsHeader = false,
+                    StyleIndexOverride = styleIndexOverride
                 });
             }
 
-            AddHeaderCell(1, 1, "Таблица публикаций сотрудников СГУПС", 17);
-
-            for (int row = 2; row <= 40; row++)
-            {
-                AddHeaderCell(row, 1, string.Empty);
-            }
-
+            AddHeaderCell(1, 1, "Таблица публикаций сотрудников СГУПС", 17, 1, 2);
             AddHeaderCell(
-                41,
+                2,
                 1,
                 "* ОБЯЗАТЕЛЬНОЕ ПОЛЕ 7! =1 - если соавторы СОТРУДНИКИ СГУПС с одной кафедры или соавторы не сотрудники СГУПС (доля не выделяется) = а<1 - если соавторы с разных кафедр, распределение должно быть согласованным, сумма долей по одной статье в отчетах разных кафедр должна быть равна 1",
-                9);
-            AddHeaderCell(42, 1, string.Empty);
-            AddHeaderCell(43, 3, "Столбцы 6-12 копируются в таблицу 3.1 Отчета о НИР");
+                9,
+                1,
+                3);
+            AddHeaderCell(3, 3, "Столбцы 6-12 копируются в таблицу 3.1 Отчета о НИР", 1, 1, 4);
 
             string[] numbering =
             {
@@ -5473,7 +5566,7 @@ namespace Project_bpi
             };
             for (int column = 1; column <= numbering.Length; column++)
             {
-                AddHeaderCell(44, column, numbering[column - 1]);
+                AddHeaderCell(4, column, numbering[column - 1], 1, 1, 1);
             }
 
             string[] headers =
@@ -5498,31 +5591,32 @@ namespace Project_bpi
             };
             for (int column = 1; column <= headers.Length; column++)
             {
-                AddHeaderCell(45, column, headers[column - 1]);
+                AddHeaderCell(5, column, headers[column - 1], 1, 1, 1);
             }
 
             for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
             {
                 NirPublicationExportRow row = rows[rowIndex];
                 int targetRow = rowIndex + 1;
+                tableData.BodyRowHeights[targetRow] = 60;
 
-                AddBodyCell(targetRow, 1, string.Empty);
-                AddBodyCell(targetRow, 2, string.Empty);
-                AddBodyCell(targetRow, 3, string.Empty);
-                AddBodyCell(targetRow, 4, string.Empty);
-                AddBodyCell(targetRow, 5, string.Empty);
-                AddBodyCell(targetRow, 6, row.Number);
-                AddBodyCell(targetRow, 7, row.Share);
-                AddBodyCell(targetRow, 8, row.Authors);
-                AddBodyCell(targetRow, 9, row.PublicationName);
-                AddBodyCell(targetRow, 10, row.PublicationType);
-                AddBodyCell(targetRow, 11, row.EditionInfo);
-                AddBodyCell(targetRow, 12, row.PublicationPlace);
-                AddBodyCell(targetRow, 13, string.Empty);
-                AddBodyCell(targetRow, 14, string.Empty);
-                AddBodyCell(targetRow, 15, string.Empty);
-                AddBodyCell(targetRow, 16, string.Empty);
-                AddBodyCell(targetRow, 17, string.Empty);
+                AddBodyCell(targetRow, 1, string.Empty, 0);
+                AddBodyCell(targetRow, 2, string.Empty, 0);
+                AddBodyCell(targetRow, 3, string.Empty, 0);
+                AddBodyCell(targetRow, 4, string.Empty, 0);
+                AddBodyCell(targetRow, 5, string.Empty, 0);
+                AddBodyCell(targetRow, 6, row.Number, 0);
+                AddBodyCell(targetRow, 7, row.Share, 0);
+                AddBodyCell(targetRow, 8, row.Authors, 0);
+                AddBodyCell(targetRow, 9, row.PublicationName, 0);
+                AddBodyCell(targetRow, 10, row.PublicationType, 0);
+                AddBodyCell(targetRow, 11, row.EditionInfo, 0);
+                AddBodyCell(targetRow, 12, row.PublicationPlace, 0);
+                AddBodyCell(targetRow, 13, string.Empty, 0);
+                AddBodyCell(targetRow, 14, string.Empty, 0);
+                AddBodyCell(targetRow, 15, string.Empty, 0);
+                AddBodyCell(targetRow, 16, string.Empty, 0);
+                AddBodyCell(targetRow, 17, string.Empty, 0);
             }
 
             return tableData;
@@ -5678,13 +5772,13 @@ namespace Project_bpi
 
             EnsureEditableTableStructure(context.Structure);
 
-            if (!context.Structure.BodyCells.Any(cell => !string.IsNullOrWhiteSpace(cell.Text)))
+            if (context.Structure.BodyRowCount <= 0 && !context.Structure.BodyCells.Any())
             {
                 return;
             }
 
             if (MessageBox.Show(
-                "Очистить содержимое таблицы? Шапка и структура таблицы останутся без изменений.",
+                "Очистить таблицу? Будут удалены все строки данных. Шапка и столбцы останутся без изменений.",
                 "Таблица",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question) != MessageBoxResult.Yes)
@@ -5692,10 +5786,9 @@ namespace Project_bpi
                 return;
             }
 
-            foreach (var bodyCell in context.Structure.BodyCells)
-            {
-                bodyCell.Text = string.Empty;
-            }
+            context.Structure.BodyCells.Clear();
+            context.Structure.BodyRowCount = 0;
+            context.ColumnFilters.Clear();
 
             RefreshTableEditor(context);
             await SaveTableAsync(context, false);

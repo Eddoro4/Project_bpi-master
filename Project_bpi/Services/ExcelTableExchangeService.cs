@@ -17,6 +17,9 @@ namespace Project_bpi.Services
         public int BodyRowCount { get; set; }
         public List<ExcelTableCell> HeaderCells { get; } = new List<ExcelTableCell>();
         public List<ExcelTableCell> BodyCells { get; } = new List<ExcelTableCell>();
+        public Dictionary<int, double> ColumnWidths { get; } = new Dictionary<int, double>();
+        public Dictionary<int, double> HeaderRowHeights { get; } = new Dictionary<int, double>();
+        public Dictionary<int, double> BodyRowHeights { get; } = new Dictionary<int, double>();
     }
 
     public sealed class ExcelTableCell
@@ -27,6 +30,7 @@ namespace Project_bpi.Services
         public int ColSpan { get; set; } = 1;
         public int RowSpan { get; set; } = 1;
         public bool IsHeader { get; set; }
+        public int? StyleIndexOverride { get; set; }
     }
 
     public static class ExcelTableExchangeService
@@ -96,7 +100,7 @@ namespace Project_bpi.Services
 
                 var worksheetUri = PackUriHelper.CreatePartUri(new Uri("/xl/worksheets/sheet1.xml", UriKind.Relative));
                 var worksheetPart = package.CreatePart(worksheetUri, WorksheetContentType, CompressionOption.Maximum);
-                WritePart(worksheetPart, BuildWorksheetXml(worksheetRows, tableData.ColumnCount));
+                WritePart(worksheetPart, BuildWorksheetXml(worksheetRows, tableData));
 
                 var stylesUri = PackUriHelper.CreatePartUri(new Uri("/xl/styles.xml", UriKind.Relative));
                 var stylesPart = package.CreatePart(stylesUri, StylesContentType, CompressionOption.Maximum);
@@ -384,7 +388,7 @@ namespace Project_bpi.Services
                     Row = worksheetRow,
                     Column = cell.Column,
                     Text = cell.Text ?? string.Empty,
-                    StyleIndex = cell.IsHeader ? 1 : defaultStyleIndex,
+                    StyleIndex = cell.StyleIndexOverride ?? (cell.IsHeader ? 1 : defaultStyleIndex),
                     ColSpan = Math.Max(1, cell.ColSpan),
                     RowSpan = Math.Max(1, cell.RowSpan)
                 });
@@ -429,9 +433,22 @@ namespace Project_bpi.Services
                    "<fill><patternFill patternType=\"none\"/></fill>" +
                    "<fill><patternFill patternType=\"gray125\"/></fill>" +
                    "</fills>" +
-                   "<borders count=\"1\"><border><left style=\"thin\"/><right style=\"thin\"/><top style=\"thin\"/><bottom style=\"thin\"/><diagonal/></border></borders>" +
+                   "<borders count=\"2\">" +
+                   "<border><left/><right/><top/><bottom/><diagonal/></border>" +
+                   "<border>" +
+                   "<left style=\"thin\"><color rgb=\"FF000000\"/></left>" +
+                   "<right style=\"thin\"><color rgb=\"FF000000\"/></right>" +
+                   "<top style=\"thin\"><color rgb=\"FF000000\"/></top>" +
+                   "<bottom style=\"thin\"><color rgb=\"FF000000\"/></bottom>" +
+                   "<diagonal/>" +
+                   "</border>" +
+                   "</borders>" +
                    "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
-                   "<cellXfs count=\"1\">" +
+                   "<cellXfs count=\"5\">" +
+                   "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"1\" xfId=\"0\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>" +
+                   "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"1\" xfId=\"0\" applyFont=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\" wrapText=\"1\"/></xf>" +
+                   "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\" wrapText=\"1\"/></xf>" +
+                   "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyAlignment=\"1\"><alignment horizontal=\"left\" vertical=\"top\" wrapText=\"1\"/></xf>" +
                    "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\" wrapText=\"1\"/></xf>" +
                    "</cellXfs>" +
                    "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>" +
@@ -460,17 +477,39 @@ namespace Project_bpi.Services
             return builder.ToString();
         }
 
-        private static string BuildWorksheetXml(List<List<WorksheetCellRecord>> rows, int columnCount)
+        private static string BuildWorksheetXml(List<List<WorksheetCellRecord>> rows, ExcelTableData tableData)
         {
             var builder = new StringBuilder();
+            int columnCount = Math.Max(1, tableData?.ColumnCount ?? 1);
+            int maxUsedRow = rows.SelectMany(item => item).Any()
+                ? rows.SelectMany(item => item).Max(item => item.Row + Math.Max(1, item.RowSpan) - 1)
+                : 1;
+            int maxUsedColumn = rows.SelectMany(item => item).Any()
+                ? rows.SelectMany(item => item).Max(item => item.Column + Math.Max(1, item.ColSpan) - 1)
+                : columnCount;
             builder.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
             builder.Append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
-            builder.Append("<sheetViews><sheetView workbookViewId=\"0\"/></sheetViews>");
+            builder.Append("<dimension ref=\"A1:")
+                .Append(GetCellReference(Math.Max(1, maxUsedColumn), Math.Max(1, maxUsedRow)))
+                .Append("\"/>");
+            builder.Append("<sheetViews><sheetView showGridLines=\"0\" workbookViewId=\"0\"/></sheetViews>");
             builder.Append("<sheetFormatPr defaultRowHeight=\"18\"/>");
             builder.Append("<cols>");
             for (int column = 1; column <= Math.Max(1, columnCount); column++)
             {
-                builder.Append("<col min=\"").Append(column).Append("\" max=\"").Append(column).Append("\" width=\"20\" customWidth=\"1\"/>");
+                double width = 20d;
+                if (tableData?.ColumnWidths != null && tableData.ColumnWidths.TryGetValue(column, out double customWidth) && customWidth > 0d)
+                {
+                    width = customWidth;
+                }
+
+                builder.Append("<col min=\"")
+                    .Append(column)
+                    .Append("\" max=\"")
+                    .Append(column)
+                    .Append("\" width=\"")
+                    .Append(width.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))
+                    .Append("\" customWidth=\"1\"/>");
             }
             builder.Append("</cols>");
             builder.Append("<sheetData>");
@@ -478,7 +517,12 @@ namespace Project_bpi.Services
             foreach (var row in rows.Where(item => item.Any()))
             {
                 int rowIndex = row.First().Row;
-                builder.Append("<row r=\"").Append(rowIndex).Append("\" ht=\"22\" customHeight=\"1\">");
+                double rowHeight = GetRowHeight(tableData, rowIndex);
+                builder.Append("<row r=\"")
+                    .Append(rowIndex)
+                    .Append("\" ht=\"")
+                    .Append(rowHeight.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))
+                    .Append("\" customHeight=\"1\">");
 
                 foreach (var cell in row.OrderBy(item => item.Column))
                 {
@@ -517,6 +561,32 @@ namespace Project_bpi.Services
 
             builder.Append("</worksheet>");
             return builder.ToString();
+        }
+
+        private static double GetRowHeight(ExcelTableData tableData, int worksheetRow)
+        {
+            if (tableData == null)
+            {
+                return 22d;
+            }
+
+            if (worksheetRow <= tableData.HeaderRowCount)
+            {
+                if (tableData.HeaderRowHeights.TryGetValue(worksheetRow, out double headerHeight) && headerHeight > 0d)
+                {
+                    return headerHeight;
+                }
+            }
+            else
+            {
+                int bodyRow = worksheetRow - tableData.HeaderRowCount;
+                if (tableData.BodyRowHeights.TryGetValue(bodyRow, out double bodyHeight) && bodyHeight > 0d)
+                {
+                    return bodyHeight;
+                }
+            }
+
+            return 22d;
         }
 
         private static List<string> LoadSharedStrings(PackagePart part)
