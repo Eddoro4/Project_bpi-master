@@ -135,6 +135,7 @@ namespace Project_bpi
         private readonly Dictionary<Border, SubSection> dynamicSubSections = new Dictionary<Border, SubSection>();
         private readonly Dictionary<Border, StackPanel> dynamicMenus = new Dictionary<Border, StackPanel>();
         private readonly Dictionary<Border, Image> dynamicIndicators = new Dictionary<Border, Image>();
+        private int _applicationZoomPercent = 100;
         private DateTime _currentCalendarDate = DateTime.Today;
         private Border currentDynamicEditorBorder;
 
@@ -191,6 +192,10 @@ namespace Project_bpi
             ValueDesc
         }
 
+        private const int MinimumApplicationZoomPercent = 50;
+        private const int MaximumApplicationZoomPercent = 150;
+        private const int ApplicationZoomStepPercent = 10;
+
         private sealed class TableColumnFilterState
         {
             public string SearchText { get; set; }
@@ -204,6 +209,7 @@ namespace Project_bpi
         {
             DB.InitializeDatabase();
             InitializeComponent();
+            ApplyApplicationZoom();
             InitializeDateRange();
             Loaded += async (sender, args) =>
             {
@@ -312,8 +318,62 @@ namespace Project_bpi
                 templateMenu.Children.Add(sectionContainer);
             }
 
-            DynamicTemplatesPanel.Children.Add(templateContainer);
+            InsertTemplateContainer(templateContainer, entry);
             return entry;
+        }
+
+        private void InsertTemplateContainer(StackPanel templateContainer, DynamicTemplateEntry entry)
+        {
+            if (templateContainer == null || entry == null)
+            {
+                return;
+            }
+
+            int newPriority = GetTemplateMenuPriority(entry.DisplayTitle);
+            int insertIndex = DynamicTemplatesPanel.Children.Count;
+
+            if (newPriority < int.MaxValue)
+            {
+                insertIndex = 0;
+
+                foreach (var child in DynamicTemplatesPanel.Children.OfType<StackPanel>())
+                {
+                    var existingEntry = dynamicTemplates
+                        .FirstOrDefault(pair => ReferenceEquals(pair.Value?.Container, child))
+                        .Value;
+
+                    if (existingEntry == null)
+                    {
+                        insertIndex++;
+                        continue;
+                    }
+
+                    int existingPriority = GetTemplateMenuPriority(existingEntry.DisplayTitle);
+                    if (existingPriority > newPriority)
+                    {
+                        break;
+                    }
+
+                    insertIndex++;
+                }
+            }
+
+            DynamicTemplatesPanel.Children.Insert(insertIndex, templateContainer);
+        }
+
+        private int GetTemplateMenuPriority(string templateTitle)
+        {
+            if (string.Equals(templateTitle, NirReportTitle, StringComparison.Ordinal))
+            {
+                return 0;
+            }
+
+            if (string.Equals(templateTitle, StudyReportTitle, StringComparison.Ordinal))
+            {
+                return 1;
+            }
+
+            return int.MaxValue;
         }
 
         private void AddSubSectionsToMenu(
@@ -2304,10 +2364,10 @@ namespace Project_bpi
                 saveButton.Click += SavePreviewTableButton_Click;
                 buttons.Children.Add(saveButton);
 
-                var exportButton = CreateSecondaryButton("Экспортировать таблицу");
-                exportButton.Tag = context;
-                exportButton.Click += ExportTableToExcelButton_Click;
-                buttons.Children.Add(exportButton);
+                var clearButton = CreateSecondaryButton("Очистить таблицу");
+                clearButton.Tag = context;
+                clearButton.Click += ClearTableContentButton_Click;
+                buttons.Children.Add(clearButton);
 
                 content.Children.Add(buttons);
             }
@@ -2826,6 +2886,75 @@ namespace Project_bpi
                     TextWrapping = TextWrapping.Wrap
                 }
             };
+        }
+
+        private void ApplyApplicationZoom()
+        {
+            double zoomScale = Math.Max(
+                MinimumApplicationZoomPercent,
+                Math.Min(MaximumApplicationZoomPercent, _applicationZoomPercent)) / 100d;
+
+            if (ApplicationScaleTransform != null)
+            {
+                ApplicationScaleTransform.ScaleX = zoomScale;
+                ApplicationScaleTransform.ScaleY = zoomScale;
+            }
+
+            if (AppZoomPercentText != null)
+            {
+                AppZoomPercentText.Text = $"{_applicationZoomPercent}%";
+            }
+
+            if (DecreaseAppZoomButton != null)
+            {
+                DecreaseAppZoomButton.IsEnabled = _applicationZoomPercent > MinimumApplicationZoomPercent;
+            }
+
+            if (IncreaseAppZoomButton != null)
+            {
+                IncreaseAppZoomButton.IsEnabled = _applicationZoomPercent < MaximumApplicationZoomPercent;
+            }
+
+            if (ResetAppZoomButton != null)
+            {
+                ResetAppZoomButton.IsEnabled = _applicationZoomPercent != 100;
+            }
+        }
+
+        private void ChangeApplicationZoom(int delta)
+        {
+            int newZoomPercent = Math.Max(
+                MinimumApplicationZoomPercent,
+                Math.Min(MaximumApplicationZoomPercent, _applicationZoomPercent + delta));
+
+            if (newZoomPercent == _applicationZoomPercent)
+            {
+                return;
+            }
+
+            _applicationZoomPercent = newZoomPercent;
+            ApplyApplicationZoom();
+        }
+
+        private void DecreaseAppZoomButton_Click(object sender, RoutedEventArgs e)
+        {
+            ChangeApplicationZoom(-ApplicationZoomStepPercent);
+        }
+
+        private void IncreaseAppZoomButton_Click(object sender, RoutedEventArgs e)
+        {
+            ChangeApplicationZoom(ApplicationZoomStepPercent);
+        }
+
+        private void ResetAppZoomButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_applicationZoomPercent == 100)
+            {
+                return;
+            }
+
+            _applicationZoomPercent = 100;
+            ApplyApplicationZoom();
         }
 
         private Button CreateTableFiltersToggleButton(TableEditorContext context)
@@ -3860,8 +3989,180 @@ namespace Project_bpi
             {
                 cell.Text = textBox.Text;
             };
+            textBox.PreviewKeyDown += EditableTableCellTextBox_PreviewKeyDown;
 
             return textBox;
+        }
+
+        private void EditableTableCellTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (!(sender is TextBox currentTextBox))
+            {
+                return;
+            }
+
+            if (e.Key != Key.Left &&
+                e.Key != Key.Right &&
+                e.Key != Key.Up &&
+                e.Key != Key.Down)
+            {
+                return;
+            }
+
+            if (!ShouldMoveToAdjacentTableCell(currentTextBox, e.Key))
+            {
+                return;
+            }
+
+            var targetTextBox = FindAdjacentTableCellTextBox(currentTextBox, e.Key);
+            if (targetTextBox == null)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            MoveCaretToAdjacentTableCell(currentTextBox, targetTextBox, e.Key);
+        }
+
+        private TextBox FindAdjacentTableCellTextBox(TextBox currentTextBox, Key directionKey)
+        {
+            if (!(currentTextBox.Parent is Grid parentGrid))
+            {
+                return null;
+            }
+
+            int currentRow = Grid.GetRow(currentTextBox);
+            int currentColumn = Grid.GetColumn(currentTextBox);
+            int rowSpan = Math.Max(1, Grid.GetRowSpan(currentTextBox));
+            int columnSpan = Math.Max(1, Grid.GetColumnSpan(currentTextBox));
+
+            int rowStep = 0;
+            int columnStep = 0;
+            int nextRow = currentRow;
+            int nextColumn = currentColumn;
+
+            switch (directionKey)
+            {
+                case Key.Left:
+                    columnStep = -1;
+                    nextColumn = currentColumn - 1;
+                    break;
+                case Key.Right:
+                    columnStep = 1;
+                    nextColumn = currentColumn + columnSpan;
+                    break;
+                case Key.Up:
+                    rowStep = -1;
+                    nextRow = currentRow - 1;
+                    break;
+                case Key.Down:
+                    rowStep = 1;
+                    nextRow = currentRow + rowSpan;
+                    break;
+                default:
+                    return null;
+            }
+
+            int maxRow = Math.Max(0, parentGrid.RowDefinitions.Count - 1);
+            int maxColumn = Math.Max(0, parentGrid.ColumnDefinitions.Count - 1);
+
+            while (nextRow >= 0 && nextRow <= maxRow && nextColumn >= 0 && nextColumn <= maxColumn)
+            {
+                var targetTextBox = parentGrid.Children
+                    .OfType<TextBox>()
+                    .FirstOrDefault(textBox =>
+                    {
+                        int childRow = Grid.GetRow(textBox);
+                        int childColumn = Grid.GetColumn(textBox);
+                        int childRowSpan = Math.Max(1, Grid.GetRowSpan(textBox));
+                        int childColumnSpan = Math.Max(1, Grid.GetColumnSpan(textBox));
+
+                        return textBox != currentTextBox &&
+                               nextRow >= childRow &&
+                               nextRow < childRow + childRowSpan &&
+                               nextColumn >= childColumn &&
+                               nextColumn < childColumn + childColumnSpan;
+                    });
+
+                if (targetTextBox != null)
+                {
+                    return targetTextBox;
+                }
+
+                nextRow += rowStep;
+                nextColumn += columnStep;
+            }
+
+            return null;
+        }
+
+        private bool ShouldMoveToAdjacentTableCell(TextBox currentTextBox, Key directionKey)
+        {
+            if (currentTextBox == null || Keyboard.Modifiers != ModifierKeys.None || currentTextBox.SelectionLength > 0)
+            {
+                return false;
+            }
+
+            switch (directionKey)
+            {
+                case Key.Left:
+                    return currentTextBox.CaretIndex == 0;
+                case Key.Right:
+                    return currentTextBox.CaretIndex >= (currentTextBox.Text?.Length ?? 0);
+                case Key.Up:
+                    return GetCurrentTextBoxLineIndex(currentTextBox) <= 0;
+                case Key.Down:
+                    return GetCurrentTextBoxLineIndex(currentTextBox) >= GetLastTextBoxLineIndex(currentTextBox);
+                default:
+                    return false;
+            }
+        }
+
+        private void MoveCaretToAdjacentTableCell(TextBox currentTextBox, TextBox targetTextBox, Key directionKey)
+        {
+            if (targetTextBox == null)
+            {
+                return;
+            }
+
+            targetTextBox.Focus();
+
+            int targetCaretIndex;
+            switch (directionKey)
+            {
+                case Key.Left:
+                    targetCaretIndex = targetTextBox.Text?.Length ?? 0;
+                    break;
+                case Key.Right:
+                    targetCaretIndex = 0;
+                    break;
+                default:
+                    targetCaretIndex = Math.Min(currentTextBox?.CaretIndex ?? 0, targetTextBox.Text?.Length ?? 0);
+                    break;
+            }
+
+            targetTextBox.CaretIndex = Math.Max(0, targetCaretIndex);
+            targetTextBox.SelectionLength = 0;
+        }
+
+        private int GetCurrentTextBoxLineIndex(TextBox textBox)
+        {
+            if (textBox == null)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, textBox.GetLineIndexFromCharacterIndex(textBox.CaretIndex));
+        }
+
+        private int GetLastTextBoxLineIndex(TextBox textBox)
+        {
+            if (textBox == null)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, textBox.LineCount - 1);
         }
 
         private void ToggleDisplayRowHeader(TableEditorContext context, int displayRow)
@@ -4740,7 +5041,11 @@ namespace Project_bpi
                 return;
             }
 
-            await SaveTableAsync(context, true);
+            if (await SaveTableAsync(context, true))
+            {
+                MessageBox.Show("Таблица сохранена.", "Таблица",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
         }
 
         private async void SavePreviewTableButton_Click(object sender, RoutedEventArgs e)
@@ -4750,7 +5055,11 @@ namespace Project_bpi
                 return;
             }
 
-            await SaveTableAsync(context, false);
+            if (await SaveTableAsync(context, false))
+            {
+                MessageBox.Show("Таблица сохранена.", "Таблица",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
         }
 
         private void ExportTableToExcelButton_Click(object sender, RoutedEventArgs e)
@@ -4794,6 +5103,38 @@ namespace Project_bpi
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
+        }
+
+        private async void ClearTableContentButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is Button button) || !(button.Tag is TableEditorContext context))
+            {
+                return;
+            }
+
+            EnsureEditableTableStructure(context.Structure);
+
+            if (!context.Structure.BodyCells.Any(cell => !string.IsNullOrWhiteSpace(cell.Text)))
+            {
+                return;
+            }
+
+            if (MessageBox.Show(
+                "Очистить содержимое таблицы? Шапка и структура таблицы останутся без изменений.",
+                "Таблица",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            foreach (var bodyCell in context.Structure.BodyCells)
+            {
+                bodyCell.Text = string.Empty;
+            }
+
+            RefreshTableEditor(context);
+            await SaveTableAsync(context, false);
         }
 
         private void ImportTableFromExcelButton_Click(object sender, RoutedEventArgs e)

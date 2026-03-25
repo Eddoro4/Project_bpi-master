@@ -392,11 +392,15 @@
     </Window.Resources>
 
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="250"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="180"/>
-        </Grid.ColumnDefinitions>
+        <Grid x:Name="ApplicationRootGrid">
+            <Grid.LayoutTransform>
+                <ScaleTransform x:Name="ApplicationScaleTransform" ScaleX="1" ScaleY="1"/>
+            </Grid.LayoutTransform>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="250"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="180"/>
+            </Grid.ColumnDefinitions>
 
         <!-- Левая навигационная панель -->
         <Border Grid.Column="0"
@@ -498,164 +502,7 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Блок с периодом для истории изменений -->
-                <Grid x:Name="HistoryPeriodPanel" Visibility="Collapsed">
-                <Border Background="White"
-        CornerRadius="10"
-        Padding="10"
-        Margin="10"
-        BorderBrush="#d6e2ea"
-        BorderThickness="1"
-        VerticalAlignment="Top">
-                    <StackPanel HorizontalAlignment="Center">
-                        <TextBlock Text="Период" FontWeight="Bold" Foreground="#0167a4"/>
-
-                        <!-- Кликабельная область для выбора периода -->
-                        <Button x:Name="PeriodSelector" 
-        Click="PeriodSelector_Click"
-        Background="Transparent"
-        BorderThickness="0"
-        Cursor="Hand">
-                            <!-- Содержимое вашей кнопки выбора периода -->
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="DateRangeText" Text="01.01 - 31.12"/>
-                                <TextBlock x:Name="YearText" Text="2025" Margin="5,0,0,0"/>
-                            </StackPanel>
-                        </Button>
-                    </StackPanel>
-                </Border>
-                <Popup x:Name="CalendarPopup"
-       Placement="Bottom"
-       PlacementTarget="{Binding ElementName=PeriodSelector}"
-       StaysOpen="False"
-       AllowsTransparency="True"
-       PopupAnimation="Slide">
-                    <Border Background="White"
-            BorderBrush="#d6e2ea"
-            BorderThickness="1"
-            CornerRadius="14"
-            Padding="20"
-            Margin="0,8,0,0">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="20" Opacity="0.12" ShadowDepth="4" Color="#000000"/>
-                        </Border.Effect>
-                        <StackPanel>
-                            <!-- Заголовок -->
-                            <TextBlock Text="Период"
-                       FontWeight="Bold"
-                       Foreground="#0167a4"
-                       FontSize="16"
-                       Margin="0,0,0,16"
-                       HorizontalAlignment="Center"/>
-
-                            <!-- Навигация по месяцам -->
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
-                                <Button Content="‹"
-                        Style="{StaticResource CalendarNavButtonStyle}"
-                        Click="PreviousMonth_Click"/>
-                                <TextBlock x:Name="CurrentMonthYear"
-                           Text="Октябрь 2025"
-                           FontWeight="SemiBold"
-                           FontSize="14"
-                           Foreground="#495057"
-                           VerticalAlignment="Center"
-                           Margin="16,0"/>
-                                <Button Content="›"
-                        Style="{StaticResource CalendarNavButtonStyle}"
-                        Click="NextMonth_Click"/>
-                            </StackPanel>
-
-                            <!-- Дни недели -->
-                            <Grid Margin="0,0,0,12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Пн" Grid.Column="0" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
-                                <TextBlock Text="Вт" Grid.Column="1" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
-                                <TextBlock Text="Ср" Grid.Column="2" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
-                                <TextBlock Text="Чт" Grid.Column="3" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
-                                <TextBlock Text="Пт" Grid.Column="4" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
-                                <TextBlock Text="Сб" Grid.Column="5" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
-                                <TextBlock Text="Вс" Grid.Column="6" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
-                            </Grid>
-
-                            <!-- Календарь -->
-                            <ItemsControl x:Name="CalendarDays" HorizontalAlignment="Stretch">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <UniformGrid Columns="7" Rows="6"/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border MinWidth="32" MinHeight="32"
-                                Background="{Binding BackgroundColor}"
-                                CornerRadius="16"
-                                Margin="2"
-                                Cursor="Hand"
-                                MouseLeftButtonUp="CalendarDay_MouseLeftButtonUp">
-                                            <TextBlock Text="{Binding Day}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       FontSize="12"
-                                       Foreground="{Binding TextColor}"
-                                       FontWeight="{Binding FontWeight}"/>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-
-                            <!-- Выбор периода через ComboBox -->
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,14">
-                                <!-- Начало -->
-                                <Border Background="#f8f9fa" CornerRadius="8" Padding="12" Margin="0,0,16,0">
-                                    <StackPanel>
-                                        <TextBlock Text="Период с:"
-                                   FontSize="11"
-                                   Foreground="#6c757d"
-                                   FontWeight="SemiBold"
-                                   HorizontalAlignment="Center"
-                                   Margin="0,0,0,8"/>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                            <ComboBox x:Name="StartDayComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="42" Margin="0,0,4,0" SelectionChanged="StartDate_SelectionChanged"/>
-                                            <ComboBox x:Name="StartMonthComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="52" Margin="0,0,4,0" SelectionChanged="StartDate_SelectionChanged"/>
-                                            <ComboBox x:Name="StartYearComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="52" SelectionChanged="StartDate_SelectionChanged"/>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-
-                                <!-- Конец -->
-                                <Border Background="#f8f9fa" CornerRadius="8" Padding="12">
-                                    <StackPanel>
-                                        <TextBlock Text="по:"
-                                   FontSize="11"
-                                   Foreground="#6c757d"
-                                   FontWeight="SemiBold"
-                                   HorizontalAlignment="Center"
-                                   Margin="0,0,0,8"/>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                            <ComboBox x:Name="EndDayComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="42" Margin="0,0,4,0" SelectionChanged="EndDate_SelectionChanged"/>
-                                            <ComboBox x:Name="EndMonthComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="52" Margin="0,0,4,0" SelectionChanged="EndDate_SelectionChanged"/>
-                                            <ComboBox x:Name="EndYearComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="52" SelectionChanged="EndDate_SelectionChanged"/>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                            </StackPanel>
-
-                            <!-- Кнопка "Применить" -->
-                            <Button Content="Применить"
-                    Click="ApplyDateRange_Click"
-                    Style="{StaticResource CalendarApplyButtonStyle}"/>
-                        </StackPanel>
-                    </Border>
-                </Popup>
-                </Grid>
+                <Grid Grid.Row="0"/>
                 <!-- Кнопки - перемещены вниз -->
                 <StackPanel Grid.Row="1" Margin="10">
                     <!-- Кнопка "История изменений" -->
@@ -693,5 +540,217 @@
                 </StackPanel>
             </Grid>
         </Border>
+        </Grid>
+
+        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Width="180">
+            <!-- Блок с периодом для истории изменений -->
+            <Grid x:Name="HistoryPeriodPanel" Visibility="Collapsed">
+                <Border Background="White"
+        CornerRadius="10"
+        Padding="10"
+        Margin="10"
+        BorderBrush="#d6e2ea"
+        BorderThickness="1"
+        VerticalAlignment="Top">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="Период" FontWeight="Bold" Foreground="#0167a4"/>
+
+                        <Button x:Name="PeriodSelector"
+        Click="PeriodSelector_Click"
+        Background="Transparent"
+        BorderThickness="0"
+        Cursor="Hand">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="DateRangeText" Text="01.01 - 31.12"/>
+                                <TextBlock x:Name="YearText" Text="2025" Margin="5,0,0,0"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Border>
+                <Popup x:Name="CalendarPopup"
+       Placement="Bottom"
+       PlacementTarget="{Binding ElementName=PeriodSelector}"
+       StaysOpen="False"
+       AllowsTransparency="True"
+       PopupAnimation="Slide">
+                    <Border Background="White"
+            BorderBrush="#d6e2ea"
+            BorderThickness="1"
+            CornerRadius="14"
+            Padding="20"
+            Margin="0,8,0,0">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="20" Opacity="0.12" ShadowDepth="4" Color="#000000"/>
+                        </Border.Effect>
+                        <StackPanel>
+                            <TextBlock Text="Период"
+                       FontWeight="Bold"
+                       Foreground="#0167a4"
+                       FontSize="16"
+                       Margin="0,0,0,16"
+                       HorizontalAlignment="Center"/>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
+                                <Button Content="‹"
+                        Style="{StaticResource CalendarNavButtonStyle}"
+                        Click="PreviousMonth_Click"/>
+                                <TextBlock x:Name="CurrentMonthYear"
+                           Text="Октябрь 2025"
+                           FontWeight="SemiBold"
+                           FontSize="14"
+                           Foreground="#495057"
+                           VerticalAlignment="Center"
+                           Margin="16,0"/>
+                                <Button Content="›"
+                        Style="{StaticResource CalendarNavButtonStyle}"
+                        Click="NextMonth_Click"/>
+                            </StackPanel>
+
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Пн" Grid.Column="0" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
+                                <TextBlock Text="Вт" Grid.Column="1" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
+                                <TextBlock Text="Ср" Grid.Column="2" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
+                                <TextBlock Text="Чт" Grid.Column="3" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
+                                <TextBlock Text="Пт" Grid.Column="4" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
+                                <TextBlock Text="Сб" Grid.Column="5" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
+                                <TextBlock Text="Вс" Grid.Column="6" HorizontalAlignment="Center" FontSize="11" Foreground="#868e96"/>
+                            </Grid>
+
+                            <ItemsControl x:Name="CalendarDays" HorizontalAlignment="Stretch">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="7" Rows="6"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border MinWidth="32" MinHeight="32"
+                                Background="{Binding BackgroundColor}"
+                                CornerRadius="16"
+                                Margin="2"
+                                Cursor="Hand"
+                                MouseLeftButtonUp="CalendarDay_MouseLeftButtonUp">
+                                            <TextBlock Text="{Binding Day}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="{Binding TextColor}"
+                                       FontWeight="{Binding FontWeight}"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,14">
+                                <Border Background="#f8f9fa" CornerRadius="8" Padding="12" Margin="0,0,16,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Период с:"
+                                   FontSize="11"
+                                   Foreground="#6c757d"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,8"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <ComboBox x:Name="StartDayComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="42" Margin="0,0,4,0" SelectionChanged="StartDate_SelectionChanged"/>
+                                            <ComboBox x:Name="StartMonthComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="52" Margin="0,0,4,0" SelectionChanged="StartDate_SelectionChanged"/>
+                                            <ComboBox x:Name="StartYearComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="52" SelectionChanged="StartDate_SelectionChanged"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Background="#f8f9fa" CornerRadius="8" Padding="12">
+                                    <StackPanel>
+                                        <TextBlock Text="по:"
+                                   FontSize="11"
+                                   Foreground="#6c757d"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,8"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <ComboBox x:Name="EndDayComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="42" Margin="0,0,4,0" SelectionChanged="EndDate_SelectionChanged"/>
+                                            <ComboBox x:Name="EndMonthComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="52" Margin="0,0,4,0" SelectionChanged="EndDate_SelectionChanged"/>
+                                            <ComboBox x:Name="EndYearComboBox" Style="{StaticResource CalendarComboBoxStyle}" Width="52" SelectionChanged="EndDate_SelectionChanged"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <Button Content="Применить"
+                    Click="ApplyDateRange_Click"
+                    Style="{StaticResource CalendarApplyButtonStyle}"/>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+            </Grid>
+
+            <Border x:Name="ApplicationZoomPanel"
+        Background="White"
+        CornerRadius="14"
+        Padding="12"
+        Margin="10,0,10,0"
+        BorderBrush="#d6e2ea"
+        BorderThickness="1"
+        VerticalAlignment="Top">
+                <StackPanel>
+                    <TextBlock Text="Масштаб"
+                       FontWeight="Bold"
+                       Foreground="#0167a4"
+                       Margin="0,0,0,10"
+                       HorizontalAlignment="Center"/>
+                    <Border Background="#eef6fb"
+                    BorderBrush="#d6e2ea"
+                    BorderThickness="1"
+                    CornerRadius="18"
+                    Padding="10,8">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Button x:Name="DecreaseAppZoomButton"
+                            Content="−"
+                            Width="28"
+                            Height="28"
+                            Margin="0,0,8,0"
+                            Click="DecreaseAppZoomButton_Click"
+                            Style="{StaticResource SidebarOutlineButtonStyle}"
+                            Padding="0"/>
+                                <TextBlock x:Name="AppZoomPercentText"
+                           Text="100%"
+                           Foreground="#0167a4"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           MinWidth="48"
+                           TextAlignment="Center"
+                           Margin="0,0,8,0"/>
+                                <Button x:Name="IncreaseAppZoomButton"
+                            Content="+"
+                            Width="28"
+                            Height="28"
+                            Margin="0"
+                            Click="IncreaseAppZoomButton_Click"
+                            Style="{StaticResource SidebarOutlineButtonStyle}"
+                            Padding="0"/>
+                            </StackPanel>
+                            <Button x:Name="ResetAppZoomButton"
+                            Content="Сброс"
+                            Height="32"
+                            MinWidth="68"
+                            Click="ResetAppZoomButton_Click"
+                            Style="{StaticResource SidebarOutlineButtonStyle}"
+                            Padding="10,2"
+                            Margin="0,10,0,0"
+                            HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </StackPanel>
     </Grid>
 </Window>
