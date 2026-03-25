@@ -215,6 +215,23 @@ namespace Project_bpi
             public string Volume { get; set; }
         }
 
+        private sealed class NirPublicationExportRow
+        {
+            public string Number { get; set; }
+            public string Share { get; set; }
+            public string Authors { get; set; }
+            public string PublicationName { get; set; }
+            public string PublicationType { get; set; }
+            public string EditionInfo { get; set; }
+            public string PublicationPlace { get; set; }
+        }
+
+        private enum NirPublishingImportTemplate
+        {
+            PublicationsList,
+            StudyPublishingPlan
+        }
+
         public MainWindow()
         {
             DB.InitializeDatabase();
@@ -2376,7 +2393,7 @@ namespace Project_bpi
                     importButton.Click += ImportTableFromExcelButton_Click;
                     buttons.Children.Add(importButton);
 
-                    var exportTable7Button = CreateSecondaryButton("Экспортировать в таблицу 7");
+                    var exportTable7Button = CreateSecondaryButton("Экспортировать по шаблону");
                     exportTable7Button.Tag = context;
                     exportTable7Button.Click += ExportToTable7Button_Click;
                     buttons.Children.Add(exportTable7Button);
@@ -2668,6 +2685,7 @@ namespace Project_bpi
                 MaxHeight = 420,
                 Content = editorHost
             };
+            AttachMouseWheelScrolling(editorScrollViewer);
             panel.Children.Add(editorScrollViewer);
             RefreshTableEditor(context);
 
@@ -2880,18 +2898,21 @@ namespace Project_bpi
                 panel.Children.Add(CreateEmptyTableMessageBorder("Строки данных отсутствуют. Добавьте строку, чтобы заполнить таблицу."));
             }
 
+            var tableScrollViewer = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = panel
+            };
+            AttachMouseWheelScrolling(tableScrollViewer);
+
             return new Border
             {
                 Background = Brushes.White,
                 BorderBrush = Brushes.Black,
                 BorderThickness = new Thickness(1),
                 ClipToBounds = true,
-                Child = new ScrollViewer
-                {
-                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-                    VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                    Content = panel
-                }
+                Child = tableScrollViewer
             };
         }
 
@@ -2909,6 +2930,146 @@ namespace Project_bpi
                     TextWrapping = TextWrapping.Wrap
                 }
             };
+        }
+
+        private void AttachMouseWheelScrolling(UIElement element)
+        {
+            if (element == null)
+            {
+                return;
+            }
+
+            element.PreviewMouseWheel -= TableScrollViewer_PreviewMouseWheel;
+            element.PreviewMouseWheel += TableScrollViewer_PreviewMouseWheel;
+        }
+
+        private void TableScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (!(sender is DependencyObject dependencyObject) || e == null || e.Delta == 0)
+            {
+                return;
+            }
+
+            double linesPerWheelStep = SystemParameters.WheelScrollLines > 0
+                ? SystemParameters.WheelScrollLines
+                : 3d;
+            double offsetStep = linesPerWheelStep * 16d;
+            bool isShiftPressed = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+
+            if (isShiftPressed)
+            {
+                ScrollViewer horizontalScrollViewer = FindScrollableHorizontalParent(dependencyObject, e.Delta);
+                if (horizontalScrollViewer == null)
+                {
+                    return;
+                }
+
+                double targetHorizontalOffset = e.Delta > 0
+                    ? horizontalScrollViewer.HorizontalOffset - offsetStep
+                    : horizontalScrollViewer.HorizontalOffset + offsetStep;
+
+                horizontalScrollViewer.ScrollToHorizontalOffset(
+                    Math.Max(0d, Math.Min(horizontalScrollViewer.ScrollableWidth, targetHorizontalOffset)));
+                e.Handled = true;
+                return;
+            }
+
+            ScrollViewer targetScrollViewer = FindScrollableVerticalParent(dependencyObject, e.Delta);
+            if (targetScrollViewer == null)
+            {
+                return;
+            }
+
+            double targetOffset = e.Delta > 0
+                ? targetScrollViewer.VerticalOffset - offsetStep
+                : targetScrollViewer.VerticalOffset + offsetStep;
+
+            targetScrollViewer.ScrollToVerticalOffset(
+                Math.Max(0d, Math.Min(targetScrollViewer.ScrollableHeight, targetOffset)));
+            e.Handled = true;
+        }
+
+        private ScrollViewer FindScrollableVerticalParent(DependencyObject start, int delta)
+        {
+            ScrollViewer fallbackScrollViewer = null;
+
+            for (DependencyObject current = start; current != null; current = GetVisualOrLogicalParent(current))
+            {
+                if (!(current is ScrollViewer scrollViewer) || scrollViewer.ScrollableHeight <= 0)
+                {
+                    continue;
+                }
+
+                if (fallbackScrollViewer == null)
+                {
+                    fallbackScrollViewer = scrollViewer;
+                }
+
+                bool canScrollUp = scrollViewer.VerticalOffset > 0;
+                bool canScrollDown = scrollViewer.VerticalOffset < scrollViewer.ScrollableHeight;
+                if ((delta > 0 && canScrollUp) || (delta < 0 && canScrollDown))
+                {
+                    return scrollViewer;
+                }
+            }
+
+            return fallbackScrollViewer;
+        }
+
+        private ScrollViewer FindScrollableHorizontalParent(DependencyObject start, int delta)
+        {
+            ScrollViewer fallbackScrollViewer = null;
+
+            for (DependencyObject current = start; current != null; current = GetVisualOrLogicalParent(current))
+            {
+                if (!(current is ScrollViewer scrollViewer) || scrollViewer.ScrollableWidth <= 0)
+                {
+                    continue;
+                }
+
+                if (fallbackScrollViewer == null)
+                {
+                    fallbackScrollViewer = scrollViewer;
+                }
+
+                bool canScrollLeft = scrollViewer.HorizontalOffset > 0;
+                bool canScrollRight = scrollViewer.HorizontalOffset < scrollViewer.ScrollableWidth;
+                if ((delta > 0 && canScrollLeft) || (delta < 0 && canScrollRight))
+                {
+                    return scrollViewer;
+                }
+            }
+
+            return fallbackScrollViewer;
+        }
+
+        private DependencyObject GetVisualOrLogicalParent(DependencyObject element)
+        {
+            if (element == null)
+            {
+                return null;
+            }
+
+            if (element is Visual || element is System.Windows.Media.Media3D.Visual3D)
+            {
+                DependencyObject visualParent = VisualTreeHelper.GetParent(element);
+                if (visualParent != null)
+                {
+                    return visualParent;
+                }
+            }
+
+            if (element is FrameworkElement frameworkElement)
+            {
+                return frameworkElement.Parent;
+            }
+
+            if (element is FrameworkContentElement frameworkContentElement)
+            {
+                return frameworkContentElement.Parent;
+            }
+
+            return null;
         }
 
         private void ApplyApplicationZoom()
@@ -5137,37 +5298,234 @@ namespace Project_bpi
 
             try
             {
-                var rows = BuildTable7ExportRows(context);
-                if (!rows.Any())
+                NirPublishingImportTemplate? exportTemplate = ShowNirPublishingTemplateDialog(
+                    "Экспорт из таблицы 3.1",
+                    "Выберите шаблон экспорта для таблицы 3.1",
+                    true);
+                if (!exportTemplate.HasValue)
                 {
-                    MessageBox.Show(
-                        "В таблице нет данных для экспорта в таблицу 7.",
-                        "Таблица",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
                     return;
                 }
 
-                string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-                string fileName = $"publishPlan_{DateTime.Now:yyyyMMdd_HHmmss}.xls";
-                string outputPath = Path.Combine(desktopPath, fileName);
+                if (exportTemplate == NirPublishingImportTemplate.StudyPublishingPlan)
+                {
+                    ExportToStudyPublishingPlan(context);
+                    return;
+                }
 
-                File.WriteAllText(outputPath, BuildTable7SpreadsheetXml(rows), new System.Text.UTF8Encoding(false));
-
-                MessageBox.Show(
-                    $"Файл сохранен:{Environment.NewLine}{outputPath}",
-                    "Таблица 7",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                ExportToPublicationsListTemplate(context);
             }
             catch (Exception ex)
             {
                 MessageBox.Show(
-                    $"Не удалось экспортировать в таблицу 7:{Environment.NewLine}{ex.Message}",
-                    "Таблица 7",
+                    $"Не удалось экспортировать таблицу:{Environment.NewLine}{ex.Message}",
+                    "Таблица",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
+        }
+
+        private void ExportToStudyPublishingPlan(TableEditorContext context)
+        {
+            var rows = BuildTable7ExportRows(context);
+            if (!rows.Any())
+            {
+                MessageBox.Show(
+                    "В таблице нет данных для экспорта в таблицу 7.",
+                    "Таблица",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            string fileName = $"publishPlan_{DateTime.Now:yyyyMMdd_HHmmss}.xls";
+            string outputPath = Path.Combine(desktopPath, fileName);
+
+            File.WriteAllText(outputPath, BuildTable7SpreadsheetXml(rows), new System.Text.UTF8Encoding(false));
+
+            MessageBox.Show(
+                $"Файл сохранен:{Environment.NewLine}{outputPath}",
+                "Таблица 7",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
+        private void ExportToPublicationsListTemplate(TableEditorContext context)
+        {
+            var rows = BuildNirPublicationExportRows(context);
+            if (!rows.Any())
+            {
+                MessageBox.Show(
+                    "В таблице нет данных для экспорта по шаблону \"Перечень публикаций сотрудников\".",
+                    "Таблица",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            string fileName = $"publicationsList_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            string outputPath = Path.Combine(desktopPath, fileName);
+
+            ExcelTableExchangeService.Export(outputPath, BuildNirPublicationsTemplateExcelData(rows));
+
+            MessageBox.Show(
+                $"Файл сохранен:{Environment.NewLine}{outputPath}",
+                "Перечень публикаций сотрудников",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
+        private List<NirPublicationExportRow> BuildNirPublicationExportRows(TableEditorContext context)
+        {
+            EnsureEditableTableStructure(context.Structure);
+
+            var result = new List<NirPublicationExportRow>();
+            for (int bodyRow = 1; bodyRow <= Math.Max(0, context.Structure.BodyRowCount); bodyRow++)
+            {
+                string number = GetBodyCellText(context.Structure, bodyRow, 1);
+                string share = GetBodyCellText(context.Structure, bodyRow, 2);
+                string authors = GetBodyCellText(context.Structure, bodyRow, 3);
+                string publicationName = GetBodyCellText(context.Structure, bodyRow, 4);
+                string publicationType = GetBodyCellText(context.Structure, bodyRow, 5);
+                string editionInfo = GetBodyCellText(context.Structure, bodyRow, 6);
+                string publicationPlace = GetBodyCellText(context.Structure, bodyRow, 7);
+
+                if (string.IsNullOrWhiteSpace(number) &&
+                    string.IsNullOrWhiteSpace(share) &&
+                    string.IsNullOrWhiteSpace(authors) &&
+                    string.IsNullOrWhiteSpace(publicationName) &&
+                    string.IsNullOrWhiteSpace(publicationType) &&
+                    string.IsNullOrWhiteSpace(editionInfo) &&
+                    string.IsNullOrWhiteSpace(publicationPlace))
+                {
+                    continue;
+                }
+
+                result.Add(new NirPublicationExportRow
+                {
+                    Number = number,
+                    Share = share,
+                    Authors = authors,
+                    PublicationName = publicationName,
+                    PublicationType = publicationType,
+                    EditionInfo = editionInfo,
+                    PublicationPlace = publicationPlace
+                });
+            }
+
+            return result;
+        }
+
+        private ExcelTableData BuildNirPublicationsTemplateExcelData(IReadOnlyList<NirPublicationExportRow> rows)
+        {
+            var tableData = new ExcelTableData
+            {
+                ColumnCount = 17,
+                HeaderRowCount = 45,
+                BodyRowCount = rows?.Count ?? 0
+            };
+
+            void AddHeaderCell(int row, int column, string text, int colSpan = 1, int rowSpan = 1)
+            {
+                tableData.HeaderCells.Add(new ExcelTableCell
+                {
+                    Row = row,
+                    Column = column,
+                    Text = text ?? string.Empty,
+                    ColSpan = colSpan,
+                    RowSpan = rowSpan,
+                    IsHeader = true
+                });
+            }
+
+            void AddBodyCell(int row, int column, string text)
+            {
+                tableData.BodyCells.Add(new ExcelTableCell
+                {
+                    Row = row,
+                    Column = column,
+                    Text = text ?? string.Empty,
+                    IsHeader = false
+                });
+            }
+
+            AddHeaderCell(1, 1, "Таблица публикаций сотрудников СГУПС", 17);
+
+            for (int row = 2; row <= 40; row++)
+            {
+                AddHeaderCell(row, 1, string.Empty);
+            }
+
+            AddHeaderCell(
+                41,
+                1,
+                "* ОБЯЗАТЕЛЬНОЕ ПОЛЕ 7! =1 - если соавторы СОТРУДНИКИ СГУПС с одной кафедры или соавторы не сотрудники СГУПС (доля не выделяется) = а<1 - если соавторы с разных кафедр, распределение должно быть согласованным, сумма долей по одной статье в отчетах разных кафедр должна быть равна 1",
+                9);
+            AddHeaderCell(42, 1, string.Empty);
+            AddHeaderCell(43, 3, "Столбцы 6-12 копируются в таблицу 3.1 Отчета о НИР");
+
+            string[] numbering =
+            {
+                "1", "2", "3", "4", "5", "6", "7", "8", "9",
+                "10", "11", "12", "13", "14", "15", "16", "17"
+            };
+            for (int column = 1; column <= numbering.Length; column++)
+            {
+                AddHeaderCell(44, column, numbering[column - 1]);
+            }
+
+            string[] headers =
+            {
+                "Факультет кафедры, заполняющей сведения",
+                "факультет соавторов",
+                "Наименование кафедры (заполняющей сведения)",
+                "число кафедр",
+                "Кафедра соавторов",
+                "№",
+                "доля авторов заполняющей кафедры* обязательное поле по согласованию с соавторами",
+                "Фамилия И.О. авторов",
+                "Наименование публикации",
+                "Тип публикации",
+                "Наименование издания, год, страницы публикации (без кавычек)",
+                "Место издания (наименование организации, город)",
+                "RSCI",
+                "ВАК",
+                "Scopus",
+                "к1",
+                "к2"
+            };
+            for (int column = 1; column <= headers.Length; column++)
+            {
+                AddHeaderCell(45, column, headers[column - 1]);
+            }
+
+            for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+            {
+                NirPublicationExportRow row = rows[rowIndex];
+                int targetRow = rowIndex + 1;
+
+                AddBodyCell(targetRow, 1, string.Empty);
+                AddBodyCell(targetRow, 2, string.Empty);
+                AddBodyCell(targetRow, 3, string.Empty);
+                AddBodyCell(targetRow, 4, string.Empty);
+                AddBodyCell(targetRow, 5, string.Empty);
+                AddBodyCell(targetRow, 6, row.Number);
+                AddBodyCell(targetRow, 7, row.Share);
+                AddBodyCell(targetRow, 8, row.Authors);
+                AddBodyCell(targetRow, 9, row.PublicationName);
+                AddBodyCell(targetRow, 10, row.PublicationType);
+                AddBodyCell(targetRow, 11, row.EditionInfo);
+                AddBodyCell(targetRow, 12, row.PublicationPlace);
+                AddBodyCell(targetRow, 13, string.Empty);
+                AddBodyCell(targetRow, 14, string.Empty);
+                AddBodyCell(targetRow, 15, string.Empty);
+                AddBodyCell(targetRow, 16, string.Empty);
+                AddBodyCell(targetRow, 17, string.Empty);
+            }
+
+            return tableData;
         }
 
         private List<Table7ExportRow> BuildTable7ExportRows(TableEditorContext context)
@@ -5177,6 +5535,7 @@ namespace Project_bpi
             var result = new List<Table7ExportRow>();
             for (int bodyRow = 1; bodyRow <= Math.Max(0, context.Structure.BodyRowCount); bodyRow++)
             {
+                string number = GetBodyCellText(context.Structure, bodyRow, 1);
                 string workName = GetBodyCellText(context.Structure, bodyRow, 4);
                 string performers = GetBodyCellText(context.Structure, bodyRow, 3);
                 string publicationType = GetBodyCellText(context.Structure, bodyRow, 5);
@@ -5192,7 +5551,7 @@ namespace Project_bpi
 
                 result.Add(new Table7ExportRow
                 {
-                    Number = (result.Count + 1).ToString(CultureInfo.InvariantCulture),
+                    Number = number,
                     WorkName = workName,
                     Performers = performers,
                     PublicationType = publicationType,
@@ -5218,12 +5577,12 @@ namespace Project_bpi
             if (!match.Success ||
                 !int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int startPage) ||
                 !int.TryParse(match.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int endPage) ||
-                endPage <= startPage)
+                endPage < startPage)
             {
                 return string.Empty;
             }
 
-            decimal volume = Math.Round((endPage - startPage) / 16m, 1, MidpointRounding.AwayFromZero);
+            decimal volume = Math.Round((endPage - startPage + 1) / 16m, 1, MidpointRounding.AwayFromZero);
             return volume.ToString("0.0", CultureInfo.GetCultureInfo("ru-RU"));
         }
 
@@ -5381,13 +5740,20 @@ namespace Project_bpi
             }
         }
 
-        private async Task ImportNirPublishingTableAsync(TableEditorContext context, string fileName)
+        private async Task ImportNirPublishingTableAsync(
+            TableEditorContext context,
+            string fileName,
+            NirPublishingImportTemplate importTemplate)
         {
-            var importedRows = ExcelTableExchangeService.ImportNirPublishingRows(fileName);
+            var importedRows = importTemplate == NirPublishingImportTemplate.StudyPublishingPlan
+                ? ExcelTableExchangeService.ImportNirPublishingPlanRows(fileName)
+                : ExcelTableExchangeService.ImportNirPublishingRows(fileName);
             if (importedRows == null || importedRows.Count == 0)
             {
                 MessageBox.Show(
-                    "В выбранном Excel-файле не найдено строк для импорта в столбцах 6-12.",
+                    importTemplate == NirPublishingImportTemplate.StudyPublishingPlan
+                        ? "В выбранном файле не найдено строк для импорта из таблицы 7."
+                        : "В выбранном Excel-файле не найдено строк для импорта в столбцах 6-12.",
                     "Таблица",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -5407,22 +5773,89 @@ namespace Project_bpi
             }
         }
 
+        private NirPublishingImportTemplate? ShowNirPublishingTemplateDialog(
+            string dialogTitle,
+            string promptText,
+            bool isExportAction)
+        {
+            NirPublishingImportTemplate? selectedTemplate = null;
+            var dialog = new Window
+            {
+                Owner = this,
+                Title = dialogTitle,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ShowInTaskbar = false,
+                Background = Brushes.White,
+                WindowStyle = WindowStyle.ToolWindow
+            };
+
+            var panel = new StackPanel
+            {
+                Margin = new Thickness(18),
+                Width = 420
+            };
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = promptText,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 16,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0167a4")),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = isExportAction
+                    ? "1. Экспортировать по шаблону \"Перечень публикаций сотрудников\"\n2. Экспортировать по шаблону \"План учебно-издательской деятельности\""
+                    : "1. Импортировать по шаблону \"Перечень публикаций сотрудников\"\n2. Импортировать по шаблону \"План учебно-издательской деятельности\"",
+                Foreground = Brushes.DimGray,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 14)
+            });
+
+            var publicationsButton = CreateActionButton(
+                isExportAction
+                    ? "1. Экспортировать: Перечень публикаций сотрудников"
+                    : "1. Импортировать: Перечень публикаций сотрудников");
+            publicationsButton.Margin = new Thickness(0, 0, 0, 10);
+            publicationsButton.Click += (sender, args) =>
+            {
+                selectedTemplate = NirPublishingImportTemplate.PublicationsList;
+                dialog.DialogResult = true;
+            };
+            panel.Children.Add(publicationsButton);
+
+            var planButton = CreateSecondaryButton(
+                isExportAction
+                    ? "2. Экспортировать: План учебно-издательской деятельности"
+                    : "2. Импортировать: План учебно-издательской деятельности");
+            planButton.Margin = new Thickness(0, 0, 0, 10);
+            planButton.Click += (sender, args) =>
+            {
+                selectedTemplate = NirPublishingImportTemplate.StudyPublishingPlan;
+                dialog.DialogResult = true;
+            };
+            panel.Children.Add(planButton);
+
+            var cancelButton = CreateSecondaryButton("Отмена");
+            cancelButton.Margin = new Thickness(0);
+            cancelButton.Click += (sender, args) =>
+            {
+                dialog.DialogResult = false;
+            };
+            panel.Children.Add(cancelButton);
+
+            dialog.Content = panel;
+            return dialog.ShowDialog() == true ? selectedTemplate : null;
+        }
+
         private async void ImportTableFromExcelButton_Click(object sender, RoutedEventArgs e)
         {
             if (!(sender is Button button) || !(button.Tag is TableEditorContext context))
-            {
-                return;
-            }
-
-            var openDialog = new OpenFileDialog
-            {
-                Title = "Импортировать таблицу",
-                Filter = "Excel Workbook (*.xlsx)|*.xlsx",
-                CheckFileExists = true,
-                Multiselect = false
-            };
-
-            if (openDialog.ShowDialog() != true)
             {
                 return;
             }
@@ -5431,7 +5864,46 @@ namespace Project_bpi
             {
                 if (CanImportNirPublishingTable(context))
                 {
-                    await ImportNirPublishingTableAsync(context, openDialog.FileName);
+                    NirPublishingImportTemplate? importTemplate = ShowNirPublishingTemplateDialog(
+                        "Импорт в таблицу 3.1",
+                        "Выберите шаблон импорта для таблицы 3.1",
+                        false);
+                    if (!importTemplate.HasValue)
+                    {
+                        return;
+                    }
+
+                    var nirOpenDialog = new OpenFileDialog
+                    {
+                        Title = importTemplate == NirPublishingImportTemplate.StudyPublishingPlan
+                            ? "Импортировать таблицу 7"
+                            : "Импортировать перечень публикаций сотрудников",
+                        Filter = importTemplate == NirPublishingImportTemplate.StudyPublishingPlan
+                            ? "Файлы Excel (*.xls;*.xlsx;*.xml)|*.xls;*.xlsx;*.xml|Excel 2003 XML (*.xls)|*.xls|Excel Workbook (*.xlsx)|*.xlsx|XML files (*.xml)|*.xml"
+                            : "Excel Workbook (*.xlsx)|*.xlsx",
+                        CheckFileExists = true,
+                        Multiselect = false
+                    };
+
+                    if (nirOpenDialog.ShowDialog() != true)
+                    {
+                        return;
+                    }
+
+                    await ImportNirPublishingTableAsync(context, nirOpenDialog.FileName, importTemplate.Value);
+                    return;
+                }
+
+                var openDialog = new OpenFileDialog
+                {
+                    Title = "Импортировать таблицу",
+                    Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+                    CheckFileExists = true,
+                    Multiselect = false
+                };
+
+                if (openDialog.ShowDialog() != true)
+                {
                     return;
                 }
 

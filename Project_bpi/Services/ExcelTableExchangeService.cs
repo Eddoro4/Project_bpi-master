@@ -53,6 +53,7 @@ namespace Project_bpi.Services
         }
 
         private static readonly int[] NirPublishingSourceColumns = { 6, 7, 8, 9, 10, 11, 12 };
+        private static readonly int[] NirPublishingPlanSourceColumns = { 1, 2, 3, 5 };
         private static readonly string[] NirPublishingHeaderKeywords =
         {
             "№",
@@ -62,6 +63,13 @@ namespace Project_bpi.Services
             "тип публикации",
             "наименование издания",
             "место издания"
+        };
+        private static readonly string[] NirPublishingPlanHeaderKeywords =
+        {
+            "№",
+            "наименование работ",
+            "исполнители",
+            "вид издания"
         };
 
         public static void Export(string outputPath, ExcelTableData tableData)
@@ -219,6 +227,120 @@ namespace Project_bpi.Services
 
                 throw new InvalidOperationException("Не удалось найти шапку таблицы в столбцах 6-12 Excel-файла.");
             }
+        }
+
+        public static List<string[]> ImportNirPublishingPlanRows(string inputPath)
+        {
+            string extension = Path.GetExtension(inputPath) ?? string.Empty;
+            return string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase)
+                ? ImportNirPublishingPlanRowsFromOpenXml(inputPath)
+                : ImportNirPublishingPlanRowsFromSpreadsheetXml(inputPath);
+        }
+
+        private static List<string[]> ImportNirPublishingPlanRowsFromOpenXml(string inputPath)
+        {
+            using (var stream = new FileStream(inputPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var package = Package.Open(stream, FileMode.Open, FileAccess.Read))
+            {
+                var workbookRelationship = package.GetRelationshipsByType(PackageRelationshipType).FirstOrDefault();
+                if (workbookRelationship == null)
+                {
+                    throw new InvalidOperationException("Файл Excel не содержит книгу.");
+                }
+
+                var workbookUri = PackUriHelper.ResolvePartUri(new Uri("/", UriKind.Relative), workbookRelationship.TargetUri);
+                var workbookPart = package.GetPart(workbookUri);
+
+                var workbookRelationships = workbookPart.GetRelationships()
+                    .Select(item => (item.RelationshipType, PackUriHelper.ResolvePartUri(workbookPart.Uri, item.TargetUri)))
+                    .ToList();
+                var worksheetParts = GetWorksheetPartsInWorkbookOrder(package, workbookPart, workbookRelationships);
+                if (worksheetParts.Count == 0)
+                {
+                    throw new InvalidOperationException("Файл Excel не содержит лист с данными.");
+                }
+
+                var sharedStringsPart = workbookRelationships
+                    .Where(item => item.RelationshipType == SharedStringsRelationshipType)
+                    .Select(item => package.GetPart(item.Item2))
+                    .FirstOrDefault();
+
+                List<string> sharedStrings = sharedStringsPart != null
+                    ? LoadSharedStrings(sharedStringsPart)
+                    : new List<string>();
+
+                foreach (var worksheetPart in worksheetParts)
+                {
+                    List<WorksheetCellRecord> records = LoadWorksheetRecords(worksheetPart, sharedStrings);
+                    int headerRow = FindHeaderRow(records, NirPublishingPlanSourceColumns, NirPublishingPlanHeaderKeywords);
+                    if (headerRow <= 0)
+                    {
+                        continue;
+                    }
+
+                    var result = BuildNirPublishingPlanRows(records, headerRow);
+                    if (result.Any())
+                    {
+                        return result;
+                    }
+                }
+            }
+
+            throw new InvalidOperationException("Не удалось найти шапку таблицы плана учебно-издательской деятельности.");
+        }
+
+        private static List<string[]> ImportNirPublishingPlanRowsFromSpreadsheetXml(string inputPath)
+        {
+            List<WorksheetCellRecord> records = LoadSpreadsheetXmlRecords(inputPath);
+            int headerRow = FindHeaderRow(records, NirPublishingPlanSourceColumns, NirPublishingPlanHeaderKeywords);
+            if (headerRow <= 0)
+            {
+                throw new InvalidOperationException("Не удалось найти шапку таблицы плана учебно-издательской деятельности.");
+            }
+
+            var result = BuildNirPublishingPlanRows(records, headerRow);
+            if (result.Any())
+            {
+                return result;
+            }
+
+            throw new InvalidOperationException("В выбранном файле не найдено строк для импорта из таблицы 7.");
+        }
+
+        private static List<string[]> BuildNirPublishingPlanRows(
+            IReadOnlyCollection<WorksheetCellRecord> records,
+            int headerRow)
+        {
+            var result = new List<string[]>();
+
+            foreach (var rowGroup in records
+                .GroupBy(item => item.Row)
+                .Where(group => group.Key > headerRow)
+                .OrderBy(group => group.Key))
+            {
+                string number = NormalizeImportedText(rowGroup.FirstOrDefault(item => item.Column == 1)?.Text);
+                string workName = NormalizeImportedText(rowGroup.FirstOrDefault(item => item.Column == 2)?.Text);
+                string performers = NormalizeImportedText(rowGroup.FirstOrDefault(item => item.Column == 3)?.Text);
+                string publicationType = NormalizeImportedText(rowGroup.FirstOrDefault(item => item.Column == 5)?.Text);
+
+                var values = new[]
+                {
+                    number,
+                    string.Empty,
+                    performers,
+                    workName,
+                    publicationType,
+                    string.Empty,
+                    string.Empty
+                };
+
+                if (values.Any(value => !string.IsNullOrWhiteSpace(value)))
+                {
+                    result.Add(values);
+                }
+            }
+
+            return result;
         }
 
         private static List<List<WorksheetCellRecord>> BuildWorksheetRows(ExcelTableData tableData)
@@ -521,6 +643,78 @@ namespace Project_bpi.Services
                 {
                     topLeftCell.ColSpan = Math.Max(1, endColumn - startColumn + 1);
                     topLeftCell.RowSpan = Math.Max(1, endRow - startRow + 1);
+                }
+            }
+
+            return records;
+        }
+
+        private static List<WorksheetCellRecord> LoadSpreadsheetXmlRecords(string inputPath)
+        {
+            var document = new XmlDocument();
+            try
+            {
+                using (var stream = new FileStream(inputPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    document.Load(stream);
+                }
+            }
+            catch (XmlException ex)
+            {
+                throw new InvalidOperationException(
+                    "Поддерживается XML-формат Excel 2003 (*.xls), сформированный экспортом таблицы 7, либо файл *.xlsx.",
+                    ex);
+            }
+
+            if (!string.Equals(document.DocumentElement?.LocalName, "Workbook", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Выбранный файл не является поддерживаемой XML-таблицей Excel.");
+            }
+
+            const string spreadsheetNamespace = "urn:schemas-microsoft-com:office:spreadsheet";
+            var manager = new XmlNamespaceManager(document.NameTable);
+            manager.AddNamespace("x", spreadsheetNamespace);
+
+            var records = new List<WorksheetCellRecord>();
+            int rowIndex = 0;
+            foreach (XmlNode rowNode in document.SelectNodes("//x:Worksheet/x:Table/x:Row", manager))
+            {
+                rowIndex++;
+                int columnIndex = 1;
+
+                foreach (XmlNode cellNode in rowNode.SelectNodes("x:Cell", manager))
+                {
+                    if (int.TryParse(cellNode.Attributes?["Index", spreadsheetNamespace]?.Value, out int explicitColumnIndex) &&
+                        explicitColumnIndex > 0)
+                    {
+                        columnIndex = explicitColumnIndex;
+                    }
+
+                    int colSpan = 1;
+                    if (int.TryParse(cellNode.Attributes?["MergeAcross", spreadsheetNamespace]?.Value, out int mergeAcross) &&
+                        mergeAcross > 0)
+                    {
+                        colSpan = mergeAcross + 1;
+                    }
+
+                    int rowSpan = 1;
+                    if (int.TryParse(cellNode.Attributes?["MergeDown", spreadsheetNamespace]?.Value, out int mergeDown) &&
+                        mergeDown > 0)
+                    {
+                        rowSpan = mergeDown + 1;
+                    }
+
+                    records.Add(new WorksheetCellRecord
+                    {
+                        Row = rowIndex,
+                        Column = columnIndex,
+                        Text = GetInnerText(cellNode.SelectSingleNode("x:Data", manager)),
+                        StyleIndex = 0,
+                        ColSpan = colSpan,
+                        RowSpan = rowSpan
+                    });
+
+                    columnIndex += colSpan;
                 }
             }
 
