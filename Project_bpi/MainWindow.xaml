@@ -351,12 +351,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="AddTemplateButtonStyle" TargetType="Button" BasedOn="{StaticResource SidebarOutlineButtonStyle}">
-            <Setter Property="Height" Value="42"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Margin" Value="10,6,10,10"/>
-            <Setter Property="FontSize" Value="12"/>
-        </Style>
         <Style x:Key="CalendarNavButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -455,16 +449,6 @@
                             </Border>
 
                             <StackPanel x:Name="DynamicTemplatesPanel"/>
-                            <Button x:Name="AddTemplateButton"
-                                    Content="Добавить шаблон"
-                                    Click="AddTemplateButton_Click"
-                                    Style="{StaticResource AddTemplateButtonStyle}"/>
-                            <Border x:Name="Item_Archive" MouseLeftButtonDown="Item_Archive_Click" Tag="main" Style="{StaticResource MenuItemStyle}">
-                                <TextBlock Text="Архив" Style="{StaticResource MenuHeaderStyle}"/>
-                            </Border>
-                            <Border x:Name="Item_Templates" MouseLeftButtonDown="MenuItem_Click" Tag="main" Style="{StaticResource MenuItemStyle}">
-                                <TextBlock Text="Шаблоны" Style="{StaticResource MenuHeaderStyle}"/>
-                            </Border>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
@@ -513,7 +497,7 @@
                TextAlignment="Center" 
                TextWrapping="Wrap"/>
                     </Button>
-                    <!-- Кнопка "Сформировать итоговый отчет" -->
+                    <!-- Кнопка "Экспортировать по шаблону" -->
                     <Button Height="45"
             Background="#0167a4" 
             Foreground="White" 
@@ -521,7 +505,7 @@
             BorderThickness="0"
             Padding="10,2"
             Margin="0,5,0,0"
-            Click="GenerateFinalReportButton_Click">
+            Click="ExportByTemplateButton_Click">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Border Background="{TemplateBinding Background}"
@@ -533,7 +517,7 @@
                                 </Border>
                             </ControlTemplate>
                         </Button.Template>
-                        <TextBlock Text="Сформировать&#x0a;итоговый отчет" 
+                        <TextBlock Text="Экспортировать&#x0a;по шаблону" 
                    TextAlignment="Center" 
                    TextWrapping="Wrap"/>
                     </Button>

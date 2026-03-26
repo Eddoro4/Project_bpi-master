@@ -17,6 +17,7 @@ namespace Project_bpi
         private List<HistoryEntryViewModel> _allEntries = new List<HistoryEntryViewModel>();
         private DateTime? _selectedStartDate;
         private DateTime? _selectedEndDate;
+        private string _searchQuery = string.Empty;
 
         private sealed class HistoryEntryViewModel
         {
@@ -57,17 +58,67 @@ namespace Project_bpi
 
         private HistoryEntryViewModel MapHistoryEntry(HistoryEntry entry)
         {
-            string actionType = (entry.ActionType ?? string.Empty).Trim().ToLowerInvariant();
+            string actionType = ResolveActionType(entry);
             return new HistoryEntryViewModel
             {
                 ChangedAtLocal = entry.ChangedAtUtc.ToLocalTime(),
                 ChangedAtDisplay = entry.ChangedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm"),
-                Location = entry.Location,
+                Location = NormalizeHistoryLocation(entry.Location),
                 Details = entry.Details,
                 ActionType = actionType,
                 ActionDisplay = GetActionDisplay(actionType),
                 ActionBrush = GetActionBrush(actionType)
             };
+        }
+
+        private static string ResolveActionType(HistoryEntry entry)
+        {
+            string actionType = (entry?.ActionType ?? string.Empty).Trim().ToLowerInvariant();
+            string entityType = (entry?.EntityType ?? string.Empty).Trim().ToLowerInvariant();
+            string details = (entry?.Details ?? string.Empty).Trim().ToLowerInvariant();
+
+            if (actionType == "import" || entityType.Contains("import") || details.Contains("импорт"))
+            {
+                return "import";
+            }
+
+            if (actionType == "export" ||
+                entityType.Contains("export") ||
+                details.Contains("экспорт") ||
+                details.Contains("выгруж"))
+            {
+                return "export";
+            }
+
+            return actionType;
+        }
+
+        private static string NormalizeHistoryLocation(string location)
+        {
+            if (string.IsNullOrWhiteSpace(location))
+            {
+                return string.Empty;
+            }
+
+            var normalizedParts = new List<string>();
+            foreach (var part in location.Split(new[] { " / " }, System.StringSplitOptions.None))
+            {
+                string normalized = (part ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(normalized))
+                {
+                    continue;
+                }
+
+                if (normalizedParts.Count > 0 &&
+                    string.Equals(normalizedParts[normalizedParts.Count - 1], normalized, System.StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                normalizedParts.Add(normalized);
+            }
+
+            return string.Join(" / ", normalizedParts);
         }
 
         private static string GetActionDisplay(string actionType)
@@ -76,6 +127,10 @@ namespace Project_bpi
             {
                 case "create":
                     return "Создано";
+                case "import":
+                    return "Импорт";
+                case "export":
+                    return "Экспорт";
                 case "delete":
                     return "Удалено";
                 default:
@@ -89,6 +144,10 @@ namespace Project_bpi
             {
                 case "create":
                     return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E7D3B"));
+                case "import":
+                    return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#C27A00"));
+                case "export":
+                    return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0D8A72"));
                 case "delete":
                     return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#C53A3A"));
                 default:
@@ -116,8 +175,20 @@ namespace Project_bpi
             CheckCreate.IsChecked = true;
             CheckEdit.IsChecked = true;
             CheckDelete.IsChecked = true;
+            CheckImport.IsChecked = true;
+            CheckExport.IsChecked = true;
+            _selectedStartDate = null;
+            _selectedEndDate = null;
+            _searchQuery = string.Empty;
+            SearchTextBox.Text = string.Empty;
             ApplyFilters(showWarnings: false);
             FilterPopup.IsOpen = false;
+        }
+
+        private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _searchQuery = (SearchTextBox.Text ?? string.Empty).Trim();
+            ApplyFilters(showWarnings: false);
         }
 
         public void ApplyDateRangeFilter(DateTime startDate, DateTime endDate)
@@ -145,6 +216,16 @@ namespace Project_bpi
                 selectedActions.Add("delete");
             }
 
+            if (CheckImport.IsChecked == true)
+            {
+                selectedActions.Add("import");
+            }
+
+            if (CheckExport.IsChecked == true)
+            {
+                selectedActions.Add("export");
+            }
+
             if (selectedActions.Count == 0)
             {
                 if (showWarnings)
@@ -164,16 +245,54 @@ namespace Project_bpi
                 .Where(entry =>
                     (!_selectedStartDate.HasValue || entry.ChangedAtLocal.Date >= _selectedStartDate.Value) &&
                     (!_selectedEndDate.HasValue || entry.ChangedAtLocal.Date <= _selectedEndDate.Value))
+                .Where(entry => string.IsNullOrWhiteSpace(_searchQuery) || MatchesSearch(entry, _searchQuery))
                 .OrderByDescending(entry => entry.ChangedAtLocal)
                 .ToList();
 
             HistoryItemsControl.ItemsSource = filteredEntries;
             EmptyStateText.Visibility = filteredEntries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-            SummaryText.Text = _selectedStartDate.HasValue && _selectedEndDate.HasValue
-                ? $"Показано записей: {filteredEntries.Count} за период {_selectedStartDate.Value:dd.MM.yyyy} - {_selectedEndDate.Value:dd.MM.yyyy}"
-                : $"Показано записей: {filteredEntries.Count}";
+            SummaryText.Text = BuildSummaryText(filteredEntries.Count);
 
             return true;
+        }
+
+        private bool MatchesSearch(HistoryEntryViewModel entry, string query)
+        {
+            if (entry == null || string.IsNullOrWhiteSpace(query))
+            {
+                return true;
+            }
+
+            return ContainsIgnoreCase(entry.Location, query)
+                || ContainsIgnoreCase(entry.Details, query)
+                || ContainsIgnoreCase(entry.ActionDisplay, query)
+                || ContainsIgnoreCase(entry.ChangedAtDisplay, query);
+        }
+
+        private bool ContainsIgnoreCase(string source, string query)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && source.IndexOf(query, StringComparison.CurrentCultureIgnoreCase) >= 0;
+        }
+
+        private string BuildSummaryText(int count)
+        {
+            var fragments = new List<string>
+            {
+                $"Показано записей: {count}"
+            };
+
+            if (_selectedStartDate.HasValue && _selectedEndDate.HasValue)
+            {
+                fragments.Add($"период {_selectedStartDate.Value:dd.MM.yyyy} - {_selectedEndDate.Value:dd.MM.yyyy}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_searchQuery))
+            {
+                fragments.Add($"поиск: \"{_searchQuery}\"");
+            }
+
+            return string.Join(", ", fragments);
         }
     }
 }
